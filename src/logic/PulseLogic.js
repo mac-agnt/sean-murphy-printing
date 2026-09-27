@@ -65,6 +65,7 @@ import {
   hexRGB,
   buildGraph
 } from "./data";
+import { store as demoStore, SECTIONS as DEMO_SECTIONS, DEMO_PAGES } from "../demo/store";
 
 /* All state and behaviour for Pulse. renderVals() returns the flat object the views render from. */
 export default class PulseLogic extends DCLogic {
@@ -1141,6 +1142,8 @@ export default class PulseLogic extends DCLogic {
   }
 
   componentDidMount(){
+    demoStore.setNavigator(p => this.go(p));
+    this._demoUnsub = demoStore.subscribe(() => this.forceUpdate());
     requestAnimationFrame(() => this.syncRailThumb());
     setTimeout(() => this.syncRailThumb(), 700);
     setTimeout(() => { const nav = document.querySelector('nav[data-rail-nav]');
@@ -1198,7 +1201,7 @@ export default class PulseLogic extends DCLogic {
     };
     window.addEventListener("paste", this._paste);
   }
-  componentWillUnmount(){ window.removeEventListener("paste", this._paste); window.removeEventListener("resize", this._resize); window.removeEventListener("keydown", this._key); clearInterval(this._t); clearInterval(this._clockTimer); clearInterval(this._flapBoot); cancelAnimationFrame(this._raf); clearInterval(this._fallback); clearInterval(this._actTimer); clearInterval(this._kpiTimer); }
+  componentWillUnmount(){ window.removeEventListener("paste", this._paste); window.removeEventListener("resize", this._resize); window.removeEventListener("keydown", this._key); clearInterval(this._t); clearInterval(this._clockTimer); clearInterval(this._flapBoot); cancelAnimationFrame(this._raf); clearInterval(this._fallback); clearInterval(this._actTimer); clearInterval(this._kpiTimer); if (this._demoUnsub) this._demoUnsub(); }
 
   ask(q){
     const a = pickAnswer(q);
@@ -3094,6 +3097,11 @@ export default class PulseLogic extends DCLogic {
         () => this.setState({workSection:s.id, opsOpen:null}), String(WORK_COUNTS[s.id])));
       contextHint = "WORK · " + workSec.label.toUpperCase();
       searchHint = "Search " + workSec.label.toLowerCase();
+    } else if (DEMO_PAGES.indexOf(page) > -1){
+      const demoSec = demoStore.get().section[page];
+      contextNav = DEMO_SECTIONS[page].map(sx => seg(sx.label, demoSec === sx.id, () => demoStore.setSection(page, sx.id)));
+      contextHint = page.toUpperCase() + " · " + (DEMO_SECTIONS[page].find(sx => sx.id === demoSec) || DEMO_SECTIONS[page][0]).label.toUpperCase();
+      searchHint = "Search " + page.toLowerCase();
     } else if (page === "Home" || page === "Dashboard"){
       contextNav = [
         seg("Home", page === "Home", () => this.go("Home")),
@@ -3151,6 +3159,7 @@ export default class PulseLogic extends DCLogic {
       nav, contextNav, contextHint, searchHint, queueTasks,
       isRecords: page === "Records",
       isActivity: page === "Activity",
+      demoPage: DEMO_PAGES.indexOf(page) > -1 ? page : null,
       act: actModel,
       admin: adminModel,
       showRecordsWash: page === "Records" && recSec.id !== "ontology",

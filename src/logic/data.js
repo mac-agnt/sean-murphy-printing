@@ -5,6 +5,11 @@ const LIME="var(--accent)", GREEN="var(--ok)", AMBER="var(--warn)", RED="var(--b
 const MONO="var(--mono)";
 
 const ICONS = {
+  navJobs:"M6.4 3.6h7.4l4.2 4.2v12.6H6.4V3.6Z M13.4 3.8v4.2h4.2 M9 11.6h6 M9 14.8h6 M9 18h3.6",
+  navProduction:"M7 9V4.2h10V9 M7 17.6H4.6v-8h14.8v8H17 M7.4 14h9.2v6.2H7.4V14Z M16.4 11.8h.01",
+  navOnline:"M3.6 5h16.8v11.2H3.6V5Z M9 20h6 M12 16.2V20 M8 10.8l2.6 2.4 5.4-5",
+  navCustomers:"M9.5 11a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4Z M3.4 19.6c.8-2.9 3.2-4.6 6.1-4.6s5.3 1.7 6.1 4.6 M16 5a3 3 0 0 1 0 5.8 M17.6 15.2c1.6.6 2.6 2 3 4.4",
+  navFinance:"M4 6.4h16v11.2H4V6.4Z M4 10h16 M7.4 14.2h3.2",
   navHome:"M12 3.2 3.6 9.1v10a1.5 1.5 0 0 0 1.5 1.5h13.8a1.5 1.5 0 0 0 1.5-1.5v-10L12 3.2Z M8.9 13.1h2l1-2.6 1.5 5 1.1-2.4h1.6",
   navAgents:"M12 2.4v2.3 M12 2.4a.9.9 0 1 0 0-.02 M8.2 6.5h7.6A2.2 2.2 0 0 1 18 8.7v5.1a2.2 2.2 0 0 1-2.2 2.2H8.2A2.2 2.2 0 0 1 6 13.8V8.7a2.2 2.2 0 0 1 2.2-2.2Z M9.9 10.6v1.4 M14.1 10.6v1.4 M6 10h-1.9 M18 10h1.9 M9.2 18.6h5.6 M9.2 21.2h5.6",
   navDash:"M4 5.6h7.2v5.1H4V5.6Z M13.6 5.6H20v8.6h-6.4V5.6Z M4 13.1h7.2v5.3H4v-5.3Z M13.6 16.6H20v1.8h-6.4v-1.8Z",
@@ -458,8 +463,14 @@ const STREAM_DEFS = [
 
 const NAV = [
   {label:"Home", icon:"helios", page:"Home"},
+  {label:"Jobs", icon:"navJobs", page:"Jobs", dot:true},
+  {label:"Production", icon:"navProduction", page:"Production"},
+  {label:"Online Orders", icon:"navOnline", page:"Online Orders"},
+  {label:"Customers", icon:"navCustomers", page:"Customers"},
+  {label:"Finance", icon:"navFinance", page:"Finance"},
+  {divider:true},
   {label:"Agents", icon:"navAgents", page:"Agents"},
-  {label:"Dashboard", icon:"navDash", page:"Dashboard", dot:true},
+  {label:"Dashboard", icon:"navDash", page:"Dashboard"},
   {label:"Work", icon:"navWork", page:"Work"},
   {label:"Records", icon:"navRecords", page:"Records"},
   {label:"Activity", icon:"pulseLine", page:"Activity", dot:true}

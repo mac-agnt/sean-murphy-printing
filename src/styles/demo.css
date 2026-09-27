@@ -1,0 +1,67 @@
+/* Murphy Print layer on top of Pulse Harbour: restrained print accents
+   (ink, paper, a touch of cyan / magenta / yellow). Tokens only; the glass
+   surfaces, radii and type all stay Pulse. */
+:root{
+  --p-cyan:#6fcfe4;--p-cyan-soft:rgba(111,207,228,.13);--p-cyan-line:rgba(111,207,228,.32);
+  --p-magenta:#e07aa8;--p-magenta-soft:rgba(224,122,168,.13);--p-magenta-line:rgba(224,122,168,.34);
+  --p-yellow:#e7c35a;--p-yellow-soft:rgba(231,195,90,.13);--p-yellow-line:rgba(231,195,90,.34);
+  --p-paper:#f3efe6;--p-paper-ink:#15181b;--p-paper-dim:#5d6268;--p-paper-line:rgba(21,24,27,.14);
+}
+[data-theme="light"]{
+  --p-cyan:#1f8aa6;--p-cyan-soft:rgba(31,138,166,.1);--p-cyan-line:rgba(31,138,166,.3);
+  --p-magenta:#b23c74;--p-magenta-soft:rgba(178,60,116,.09);--p-magenta-line:rgba(178,60,116,.3);
+  --p-yellow:#9a7412;--p-yellow-soft:rgba(154,116,18,.1);--p-yellow-line:rgba(154,116,18,.3);
+}
+/* Harbour becomes the print house: cyan accent instead of green. */
+[data-theme="harbour"]{
+  --accent:#6fcfe4;--on-accent:#06171c;--on-accent-2:rgba(6,23,28,.66);--on-accent-strong:rgba(6,23,28,.86);--on-accent-soft:rgba(6,23,28,.22);
+  --accent-hover:#8fdcec;--accent-soft:rgba(111,207,228,.15);--accent-faint:rgba(111,207,228,.065);--accent-line:rgba(111,207,228,.3);
+  --accent-fill:linear-gradient(90deg,#5cc6de 0%,#a6e4f1 100%);--accent-glow:0 0 26px rgba(111,207,228,.26);
+  --rail-active-ink:#6fcfe4;--kpi-up:#6fdca0;--glass-tint:rgba(111,207,228,.08);
+  --warn:#e7b24f;--warn-soft:rgba(231,178,79,.14);
+}
+
+.d-page{width:100%;max-width:1360px;margin:0 auto;box-sizing:border-box;padding:22px 32px 56px;animation:pageIn .6s var(--ease) both}
+.d-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--card-r,18px);box-shadow:var(--card-shadow)}
+.d-row{transition:background .18s var(--ease)}
+.d-row.click{cursor:pointer}
+.d-row.click:hover{background:var(--surface-2)}
+.d-row.sel{background:var(--accent-faint)}
+.d-row.flash{animation:dFlash 2.4s var(--ease)}
+@keyframes dFlash{0%{background:var(--accent-soft)}100%{background:transparent}}
+.d-btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:34px;padding:0 15px;border-radius:var(--cta-r,10px);border:1px solid var(--border);background:var(--surface-2);color:var(--ink);font:inherit;font-size:12.5px;font-weight:500;cursor:pointer;white-space:nowrap;transition:background .18s var(--ease),border-color .18s var(--ease),transform .12s var(--ease)}
+.d-btn:hover{border-color:var(--border-strong);background:var(--surface)}
+.d-btn:active{transform:translateY(1px)}
+.d-btn:disabled{opacity:.45;cursor:default;transform:none}
+.d-btn.primary{background:var(--accent-fill,var(--accent));border-color:transparent;color:var(--on-accent);box-shadow:var(--accent-glow,none)}
+.d-btn.primary:hover{filter:brightness(1.07)}
+.d-btn.danger{color:var(--bad);border-color:var(--bad-soft)}
+.d-btn.ghost{background:none}
+.d-btn.sm{height:28px;padding:0 11px;font-size:12px}
+.d-chip{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 10px;border-radius:999px;border:1px solid var(--border);background:var(--surface-2);font-size:11.5px;color:var(--dim);cursor:pointer;white-space:nowrap;font:inherit;font-size:11.5px;transition:all .18s var(--ease)}
+.d-chip:hover{color:var(--ink);border-color:var(--border-strong)}
+.d-chip.on{background:var(--pill-bg);color:var(--pill-ink);border-color:transparent}
+.d-link{color:var(--accent);cursor:pointer;background:none;border:0;padding:0;font:inherit}
+.d-link:hover{text-decoration:underline}
+.d-tile{transition:border-color .2s var(--ease),transform .2s var(--ease),background .2s var(--ease)}
+.d-tile.click{cursor:pointer}
+.d-tile.click:hover{border-color:var(--border-strong);transform:translateY(-1px)}
+.d-scroll{scrollbar-width:thin}
+@keyframes dPulse{0%,100%{box-shadow:0 0 0 0 var(--p-magenta-line)}50%{box-shadow:0 0 0 6px transparent}}
+.d-stop{animation:dPulse 1.6s ease-in-out infinite}
+@keyframes dSpin{to{transform:rotate(360deg)}}
+.d-spin{animation:dSpin .8s linear infinite}
+@keyframes dToast{from{opacity:0;transform:translate(-50%,10px)}to{opacity:1;transform:translate(-50%,0)}}
+@keyframes dIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.d-in{animation:dIn .45s var(--ease) both}
+
+/* Printable docket. */
+@media print{
+  body *{visibility:hidden !important}
+  .d-print,.d-print *{visibility:visible !important}
+  .d-print{position:fixed !important;inset:0 !important;margin:0 !important;box-shadow:none !important;border:0 !important;transform:none !important}
+}
+@media (prefers-reduced-motion:reduce){
+  .d-page,.d-in,.d-stop,.d-row.flash{animation:none !important}
+}
+@media (max-width:760px){.d-page{padding:16px 16px 48px}}
