@@ -43,12 +43,12 @@ const ICONS = {
 };
 
 const REC_SECTIONS = [
+  {id:"ontology", label:"Ontology", blurb:"How a customer, quote, job, docket, artwork, change, production run, payment and invoice connect."},
   {id:"customers", label:"Customers", blurb:"Every account and online customer, with what they order and what they owe."},
   {id:"jobs", label:"Jobs", blurb:"One live record per job, from approved quote to invoice."},
   {id:"quotes", label:"Quotes", blurb:"PrintLogic quotes, each linked to the job it became."},
   {id:"products", label:"Products", blurb:"The catalogue customers order from, online and over the counter."},
-  {id:"files", label:"Files", blurb:"Artwork, dockets, quotes and customer emails, filed against the job."},
-  {id:"ontology", label:"Ontology", blurb:"How a customer, quote, job, docket, artwork, change, production run, payment and invoice connect."}
+  {id:"files", label:"Files", blurb:"Artwork, dockets, quotes and customer emails, filed against the job."}
 ];
 /* Records directory rows are built from the demo store in PulseLogic; this
    list only holds quotes that have not become jobs yet. */

@@ -65,3 +65,5 @@
   .d-page,.d-in,.d-stop,.d-row.flash{animation:none !important}
 }
 @media (max-width:760px){.d-page{padding:16px 16px 48px}}
+/* Records hero wash + KPI band in the print blue, not Harbour green. */
+[data-theme="harbour"]{--hero-grad:linear-gradient(180deg,#0a1216 0%,#0f2c3a 18%,#144a60 40%,#1b6f8c 60%,#134e64 82%,#0a161c 100%)}

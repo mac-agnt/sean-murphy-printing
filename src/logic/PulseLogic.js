@@ -82,7 +82,7 @@ export default class PulseLogic extends DCLogic {
             adminCard:null, adminFlags:{},
             adminOpen:null, adminFlags:{}, adminGroup:null,
             actPaused:false, actHover:null, actKpi:"all", actQuery:"", actOpen:null, actTick:0,
-            recSection:"customers", recAsk:"", treeOpen:true, treeExpanded:{}, treeFile:"fl-1", treeQuery:"",
+            recSection:"ontology", recAsk:"", treeOpen:true, treeExpanded:{}, treeFile:"fl-1", treeQuery:"",
             ontoNode:"Job", ontoHover:null, ontoLayout:"Force",
             newRecOpen:false, newRecName:"", newRecTemplate:"Field sheet", newRecCat:"All",
             opsFilter:"all", opsOff:{}, opsOpen:null, opsScope:"week", opsDay:28, opsOrder:null, opsDrag:null,
@@ -4146,14 +4146,12 @@ export default class PulseLogic extends DCLogic {
       barLabel: st.barOpen ? "Collapse the bar" : "Expand the bar",
       barChevronStyle: "transition:transform .3s var(--ease);transform:rotate(" + (st.barOpen ? "0deg" : "180deg") + ")",
       toggleBar: () => this.setState(prev => ({barOpen: !prev.barOpen})),
-      showHint: roomy && st.barOpen,
+      showHint: roomy && st.barOpen && contextNav.length <= 4,
       showSearchText: mid && st.barOpen,
       showProfileText: roomy,
       navGroupStyle: "position:relative;display:inline-grid;grid-auto-flow:column;grid-auto-columns:"
         + (((st.w - (st.railOpen ? 252 : 68)) < 1000 && contextNav.length >= 4) ? "max-content" : "1fr") + ";"
-        + "width:max-content;max-width:100%;align-items:center;padding:0;flex:" + (contextNav.length <= 3 ? "none" : "0 1 auto") + ";min-width:0;border-radius:999px;"
-        + "overflow-x:auto;overflow-y:hidden;scrollbar-width:none;overscroll-behavior-x:contain;"
-        + "-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 14px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 14px),transparent)",
+        + "width:max-content;max-width:100%;align-items:center;padding:0;flex:none;border-radius:999px;",
       // Pure CSS: the group keeps equal 1fr tracks, so the pill is one track wide
       // and stepped by index. Nothing is measured and nothing is written after
       // render, so there is no mutation feedback loop and the transition survives.
