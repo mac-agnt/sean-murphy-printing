@@ -1,5 +1,6 @@
 import { Fragment } from "react";
 import { arr, cat, css, cx, pc, txt } from "../../runtime/template";
+import DashboardExec from "./DashboardExec";
 
 type Props = { v: any };
 
@@ -8,28 +9,8 @@ export default function Dashboard({ v }: Props) {
     <>
       <div style={{"width":"100%","maxWidth":"1280px","margin":"0 auto","boxSizing":"border-box","padding":"22px 32px 40px","animation":"pageIn .7s var(--ease) both"}}>
         <div style={{"display":"flex","alignItems":"center","gap":"10px","padding":"18px 4px 16px"}}>
-          <div style={css(v.aspectTrack)}>
-            <span style={css(v.aspectThumb)} />
-            {arr(v.aspects).map((a: any, i90: number) => (
-              <Fragment key={i90}>
-                {a?.active && (
-                  <>
-                    <button onClick={a?.pick} style={{"position":"relative","zIndex":"1","display":"flex","alignItems":"center","justifyContent":"center","gap":"8px","height":"32px","padding":"0 15px","border":"0","borderRadius":"var(--r-ctl,11px)","cursor":"pointer","fontSize":"12.5px","fontWeight":"600","whiteSpace":"nowrap","background":"none","color":"var(--pill-ink)","transition":"color .3s var(--ease)"}}>
-                      <span style={css(cat("width:7px;height:7px;border-radius:2px;background:", a?.color))} />
-                      {txt(a?.label)}
-                    </button>
-                  </>
-                )}
-                {a?.inactive && (
-                  <>
-                    <button className="ix3" onClick={a?.pick} style={{"position":"relative","zIndex":"1","display":"flex","alignItems":"center","justifyContent":"center","gap":"8px","height":"32px","padding":"0 15px","border":"0","borderRadius":"var(--r-ctl,11px)","cursor":"pointer","fontSize":"12.5px","whiteSpace":"nowrap","background":"none","color":"var(--dim)","transition":"color .3s var(--ease)"}}>
-                      <span style={{"width":"7px","height":"7px","borderRadius":"2px","background":"var(--track)"}} />
-                      {txt(a?.label)}
-                    </button>
-                  </>
-                )}
-              </Fragment>
-            ))}
+          <div style={{"flex":"1","minWidth":"0","fontSize":"12.5px","color":"var(--dim)"}}>
+            {"Switch views from the tabs above. Every figure reads from the same job records as Jobs, Production and Finance."}
           </div>
           <button className="ixe" onClick={v.toggleFilterMenu} style={{"flex":"none","height":"42px","display":"flex","alignItems":"center","gap":"7px","padding":"0 16px","background":"var(--surface)","border":"1px dashed var(--border-strong)","borderRadius":"999px","fontSize":"12.5px","color":"var(--dim)","cursor":"pointer","transition":"border-color .2s var(--ease),color .2s var(--ease),transform .18s var(--ease)"}}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -50,7 +31,7 @@ export default function Dashboard({ v }: Props) {
                 </button>
               </div>
               <div style={{"fontSize":"12.5px","color":"var(--dim)","marginTop":"6px"}}>
-                {"Type anything about the business as a filter — a region, a project, a customer segment — and Pulse builds a live metric set for it. Pick a registered dimension below, or name your own."}
+                {"Type anything about the business as a filter, such as a customer, a product or a source, and Pulse builds a live metric set for it. Pick one below, or name your own."}
               </div>
               {arr(v.filterGroups).map((g: any, i91: number) => (
                 <Fragment key={i91}>
@@ -71,7 +52,7 @@ export default function Dashboard({ v }: Props) {
                 </Fragment>
               ))}
               <div style={{"display":"flex","gap":"8px","marginTop":"18px"}}>
-                <input value={v.customFilter ?? ""} onChange={v.setCustomFilter} onKeyDown={v.onCustomFilterKey} placeholder="e.g. Scotland expansion, or Late supplier deliveries" style={{"flex":"1","minWidth":"0","height":"36px","padding":"0 15px","background":"var(--surface-2)","border":"1px solid var(--border)","borderRadius":"var(--r-md,13px)","outline":"0","fontSize":"13px"}} />
+                <input value={v.customFilter ?? ""} onChange={v.setCustomFilter} onKeyDown={v.onCustomFilterKey} placeholder="e.g. Hospitality customers, or Large Format work" style={{"flex":"1","minWidth":"0","height":"36px","padding":"0 15px","background":"var(--surface-2)","border":"1px solid var(--border)","borderRadius":"var(--r-md,13px)","outline":"0","fontSize":"13px"}} />
                 <button className={cx("ixp", "ixq")} onClick={v.addCustomFilter} style={{"height":"36px","padding":"0 17px","border":"0","borderRadius":"var(--cta-r,9px)","background":"var(--accent-fill,var(--accent))","color":"var(--on-accent)","boxShadow":"var(--accent-glow,none)","fontSize":"13px","fontWeight":"500","cursor":"pointer","transition":"background .2s var(--ease),transform .18s var(--ease)"}}>
                   {"Build dashboard"}
                 </button>
@@ -99,6 +80,7 @@ export default function Dashboard({ v }: Props) {
               {txt(v.area?.owner)}
             </span>
           </div>
+          {v.area?.isExec && <DashboardExec x={v.area?.exec} />}
           <div style={css(v.area?.metricGrid)}>
             {arr(v.area?.metrics).map((m: any, i93: number) => (
               <Fragment key={i93}>

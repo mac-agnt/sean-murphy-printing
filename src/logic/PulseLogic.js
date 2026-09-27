@@ -65,11 +65,14 @@ import {
   hexRGB,
   buildGraph
 } from "./data";
-import { store as demoStore, SECTIONS as DEMO_SECTIONS, DEMO_PAGES } from "../demo/store";
+import { store as demoStore, metrics as demoMetrics, SECTIONS as DEMO_SECTIONS, DEMO_PAGES } from "../demo/store";
+import { STAFF as DEMO_STAFF, fmtEUR } from "../demo/data";
+import { COMPANY } from "../demo/config";
+import { CUSTOMERS as P_CUSTOMERS, ONLINE_PRODUCTS as P_PRODUCTS, CHANGE as P_CHANGE, SCHEDULE as P_SCHEDULE, REVENUE_MONTHS as P_REV } from "../demo/data";
 
 /* All state and behaviour for Pulse. renderVals() returns the flat object the views render from. */
 export default class PulseLogic extends DCLogic {
-  state = { w: typeof window === "undefined" ? 1440 : window.innerWidth, theme:"harbour", page:"Home", draft:"", query:"", thread:[], typed:0, paletteOpen:false, showNotifs:false, palScope:"All", palSel:0, palRecent:["Dunne & Sons Ltd","Credit Control"],
+  state = { w: typeof window === "undefined" ? 1440 : window.innerWidth, theme:"harbour", page:"Home", draft:"", query:"", thread:[], typed:0, paletteOpen:false, showNotifs:false, palScope:"All", palSel:0, palRecent:["Byrne & Co Solicitors","J-10482"],
             done:{}, resolved:{}, approved:{}, inboxFilter:"All", approvalFilter:"Awaiting you", open:null, range:"30d",
             workDoc:null, workDocTab:"work",
             queue:"mine", recordTab:"Overview", record:"person", hovered:null, hoverLabel:"", hoverHint:"", hoverTop:0,
@@ -79,64 +82,64 @@ export default class PulseLogic extends DCLogic {
             adminCard:null, adminFlags:{},
             adminOpen:null, adminFlags:{}, adminGroup:null,
             actPaused:false, actHover:null, actKpi:"all", actQuery:"", actOpen:null, actTick:0,
-            recSection:"contacts", recAsk:"", treeOpen:true, treeExpanded:{}, treeFile:"fl-1", treeQuery:"",
-            ontoNode:"Organisation", ontoHover:null, ontoLayout:"Force",
+            recSection:"customers", recAsk:"", treeOpen:true, treeExpanded:{}, treeFile:"fl-1", treeQuery:"",
+            ontoNode:"Job", ontoHover:null, ontoLayout:"Force",
             newRecOpen:false, newRecName:"", newRecTemplate:"Field sheet", newRecCat:"All",
-            opsFilter:"all", opsOff:{}, opsOpen:null, opsScope:"week", opsDay:26, opsOrder:null, opsDrag:null,
+            opsFilter:"all", opsOff:{}, opsOpen:null, opsScope:"week", opsDay:28, opsOrder:null, opsDrag:null,
             opsBuilderOpen:false, opsBuilderMode:"workflow", builderText:"", builderGenerated:false,
-            railOpen:true, barOpen:true, chatRailPinned:false, widgetEdit:false, widgets:["inbox","work","activity"],
-            kpiEdit:false, kpiKeys:["revenue","cash","overdue","margin","jobs"],
-            aspect:"sales", filterMenuOpen:false, customFilter:"", extraFilters:[],
+            railOpen:true, barOpen:true, chatRailPinned:false, widgetEdit:false, widgets:["inbox","kpi","work","activity"],
+            kpiEdit:false, kpiKeys:["revenue","jobs","margin","overdue","dupes"],
+            aspect:"executive", filterMenuOpen:false, customFilter:"", extraFilters:[],
             workWidget:"queue", miniOpen:false, miniThread:[], miniDraft:"", miniTab:"chat", miniTone:"plain", miniWorkOpen:"tasks",
             agents:AGENT_DEFS, agentId:"briefing", groupNames:{}, agentQuery:"", agentDraft:"", agentExtra:{},
             builderOpen:false, builderMode:"new", trained:false, training:false, trainPhase:0,
             briefThread:[], briefDraft:"", briefPicks:{},
             agentSpec:{name:"", shape:"crown-pebble", tint:"#191c1f", persona:"", personality:"Straight-talking",
-                   answer:"Short answers", context:["Organisations","Tasks"], skills:["Search records","Summarise activity"], tasks:[]} };
+                   answer:"Short answers", context:["Jobs","Dockets"], skills:["Search jobs","Summarise activity"], tasks:[]} };
 
-  /* One event per stream on its own cadence, so the three columns never move in
-     lockstep. A hovered column and a paused view are both simply skipped. */
+  /* Activity is read from the demo store's event log (EVENTS plus whatever
+     approvals and invoice syncs append), so nothing is invented and the
+     numbers never drift. New events flash in; nothing is generated at random. */
   seedActivity(){
-    const now = Date.now();
-    this._actId = 0;
-    const seed = (def, count) => def.pool.slice(0, count).map((e, i) => this.mkEvent(def, e, now - (i + 1) * def.every * 1.4));
-    this.feeds = {};
-    STREAM_DEFS.forEach(d => { this.feeds[d.id] = seed(d, 5); this._actCursor = 0; });
-    this._nextPush = {};
-    STREAM_DEFS.forEach(d => { this._nextPush[d.id] = now + d.every * (0.4 + Math.random() * 0.6); });
+    this._evSeen = demoStore.get().events.length;
+    this._evFirst = {};
+    this.feeds = this.buildFeeds();
   }
 
-  mkEvent(def, tpl, at){
-    const status = tpl[5];
-    return {id: "e" + (++this._actId), stream: def.id, title: tpl[0], note: tpl[1],
-      actor: tpl[2], rel: tpl[3], src: tpl[4], status,
-      progress: status === "working" ? 8 + Math.random() * 22 : 100,
-      at: at === undefined ? Date.now() : at, fresh: at === undefined};
+  buildFeeds(){
+    const st = demoStore.get(), evs = st.events, now = Date.now();
+    if (this._evSeen === undefined) this._evSeen = evs.length;
+    if (!this._evFirst) this._evFirst = {};
+    const feeds = {data:[], people:[], ai:[]};
+    const base = now - evs.length * 60000;
+    evs.forEach((e, i) => {
+      const job = e.jobId ? st.jobs.find(j => j.id === e.jobId) : null;
+      const stream = e.kind === "system" ? "data" : e.kind === "person" ? "people" : "ai";
+      let status = "completed";
+      if (e.kind === "attention"){
+        const resolved = e.jobId === "J-10482" && st.changeState !== "pending";
+        status = resolved ? "completed" : "awaiting";
+      } else if (e.jobId === "J-10473" && /Ready to Invoice/.test(e.text) && !st.synced.includes("J-10473")){
+        status = "awaiting";
+      }
+      const isNew = i >= this._evSeen;
+      if (isNew && !this._evFirst[i]) this._evFirst[i] = now;
+      feeds[stream].push({id:"ev" + (i + 1), stream, kind:e.kind, title:e.text,
+        note: job ? job.customer + " · " + job.product : (e.kind === "system" ? "Synced into Pulse" : "Murphy Print"),
+        actor:e.who, rel: e.jobId || "General", jobId: e.jobId || null,
+        src: e.src || (e.kind === "person" ? "Pulse" : "Agent"), status, progress:100, t:e.t,
+        at: base + i * 60000, fresh: isNew && now - this._evFirst[i] < 1400});
+    });
+    Object.keys(feeds).forEach(k => feeds[k].reverse());
+    return feeds;
   }
+
+  mkEvent(){ return null; }
 
   tickActivity(){
-    if (!this.feeds) return;
+    const any = Object.keys(this._evFirst || {}).some(k => Date.now() - this._evFirst[k] < 1600);
     const now = Date.now();
-    let dirty = false;
-    for (const def of STREAM_DEFS){
-      const list = this.feeds[def.id];
-      for (const e of list){
-        if (e.status === "working"){
-          e.progress = Math.min(100, e.progress + 2.4 + Math.random() * 3);
-          if (e.progress >= 100){ e.status = "completed"; dirty = true; }
-        }
-        if (e.fresh && now - e.at > 1400){ e.fresh = false; dirty = true; }
-      }
-      if (this.state.actPaused || this.state.actHover === def.id) continue;
-      if (now >= this._nextPush[def.id]){
-        const tpl = def.pool[Math.floor(Math.random() * def.pool.length)];
-        list.unshift(this.mkEvent(def, tpl));
-        if (list.length > 7) list.pop();
-        this._nextPush[def.id] = now + def.every * (0.7 + Math.random() * 0.7);
-        dirty = true;
-      }
-    }
-    if (dirty || now - (this._actStamp || 0) > 900){
+    if (any || now - (this._actStamp || 0) > 5000){
       this._actStamp = now;
       try { this.setState({actTick: now}); } catch (e) {}
     }
@@ -1104,8 +1107,8 @@ export default class PulseLogic extends DCLogic {
     if (s.sysPrompt !== undefined && s.sysPrompt !== null) return s.sysPrompt;
     return "You are " + (s.agentSpec.name || "this agent") + " inside Pulse.\n"
       + "Voice: " + s.agentSpec.personality.toLowerCase() + ". " + s.agentSpec.answer.toLowerCase() + ".\n"
-      + "You read the whole ontology through registered tools only, filtered by the grants of whoever is asking.\n"
-      + "This client says merchant, not organisation, and job, not task. Money is in euro.\n"
+      + "You read jobs, dockets, quotes (PrintLogic), invoices (Big Red Cloud), Stripe payments and customer email through registered tools only.\n"
+      + "This shop says docket, not ticket, and job, not order line. PrintLogic owns quotes; Big Red Cloud owns the ledger. Money is in euro.\n"
       + "Never act on anything with an effect. Propose it and wait for a yes.";
   }
   sendTune(){
@@ -1115,7 +1118,7 @@ export default class PulseLogic extends DCLogic {
       tuneDraft:"",
       tuneThread: (prev.tuneThread || []).concat([
         {role:"you", text},
-        {role:"agent", text:"Done — I pinned that to my prompt. It takes effect on the next run."}
+        {role:"agent", text:"Done. I pinned that to my prompt. It takes effect on the next run."}
       ]),
       sysPrompt: this.systemPrompt(prev) + "\n" + text
     }));
@@ -1285,7 +1288,15 @@ export default class PulseLogic extends DCLogic {
     this.setState(prev => {
       const extra = (prev.agentExtra[id] || []).concat([
         {kind:"user", text:q},
-        {kind:"agent", text:"on it. i'll come back when there's something to decide — nothing that changes a record goes through without your yes."}
+        {kind:"agent", text:({
+          briefing:"Noted. I'll fold that into tomorrow's 07:30 brief and flag it earlier if it changes today.",
+          ops:"Watching it. If it slips past its stage time or a docket version conflicts, I'll flag it here and on Home.",
+          docket:"Understood. Any docket change still creates a new version and marks the old one superseded, so the printed copy never goes stale.",
+          change:"I'll check the job against the current docket. If the customer's email changes the spec, I'll prepare a change request and pause the affected work until you approve.",
+          production:"I'll check it against today's press plan and come back with the slot it fits and anything it would push back.",
+          finance:"I'll prepare it from the completed job and quote. Nothing goes to Big Red Cloud until you approve it.",
+          online:"I'll keep watching the website. Every paid order still becomes a job and docket automatically, and I'll tell you if a payment or artwork upload fails."
+        })[id] || "On it. Nothing that changes a job goes through without your yes."}
       ]);
       return {agentExtra: Object.assign({}, prev.agentExtra, {[id]: extra}), agentDraft:""};
     });
@@ -1340,7 +1351,16 @@ export default class PulseLogic extends DCLogic {
       }, 450);
     }
     const st = this.state, page = st.page;
-    const openKeys = ORDER.filter(k => !st.resolved[k]);
+    const demoS = demoStore.get();
+    const itemLive = (k) => k === "change" ? demoS.changeState === "pending"
+      : k === "invoice" ? !demoS.synced.includes("J-10473") : true;
+    const openKeys = ORDER.filter(k => !st.resolved[k] && itemLive(k));
+    const goItem = (k) => {
+      const t = (ITEMS[k] || {}).target || "";
+      if (t === "change") demoStore.openChange();
+      else if (t === "finance") demoStore.go("Finance", "ready");
+      else if (t.indexOf("job:") === 0) demoStore.openJob(t.slice(4));
+    };
 
     // Equal grid columns (width:max-content + 1fr) let a single thumb glide by
     // translateX(index * 100%) — no measurement, and identical motion everywhere.
@@ -1487,101 +1507,99 @@ export default class PulseLogic extends DCLogic {
       })
     };
 
-    const DAY_LOAD = {24:2, 25:3, 26:4, 27:5, 28:3, 29:0, 30:1, 31:2};
-    // A denser, Google-Calendar-style spread of events across the whole month —
-    // not just the last week — so the month grid actually has something in it.
-    const MONTH_EVENTS = [
-      [2,"o1"], [3,"o6"], [5,"o2"], [6,"o4"], [9,"o3"], [10,"o5"], [12,"o1"], [13,"o6"],
-      [16,"o2"], [17,"o4"], [19,"o3"], [20,"o5"], [23,"o1"], [24,"o2"], [24,"o5"],
-      [25,"o3"], [25,"o6"], [26,"o1"], [26,"o4"], [26,"o5"], [26,"o2"],
-      [27,"o1"], [27,"o2"], [27,"o3"], [27,"o4"], [27,"o5"],
-      [28,"o2"], [28,"o6"], [28,"o3"], [29,"o1"],
-      [30,"o4"], [30,"o1"], [31,"o5"], [31,"o2"]
-    ].map(e => { const w = OPS_DEFS.find(x => x.id === e[1]);
-      return w ? {day:e[0], name:w.name, color:STATUS_TINT[opsStatusOf(w)][0]} : null; }).filter(Boolean);
+    /* Calendar: September 2026 plus the first days of October (days 31-34 are
+       1-4 Oct). Today is Monday 28 September. Job due dates come from the live
+       demo store, routines from OPS_DEFS, so both move together. */
+    const TODAY = 28;
+    const WD = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+    const wdOf = (d) => d % 7; // 1 Sep 2026 is a Tuesday (Mon = 0)
+    const dayName = (d) => WD[wdOf(d)] + " " + (d > 30 ? (d - 30) + " Oct" : d + " Sep");
+    const dueDayOf = (due) => /^Today/i.test(due) ? TODAY : /^Tomorrow/i.test(due) ? TODAY + 1 : /Yesterday/i.test(due) ? TODAY - 1
+      : /(\d+) Oct/.test(due) ? 30 + Number(due.match(/(\d+) Oct/)[1]) : /(\d+) Sep/.test(due) ? Number(due.match(/(\d+) Sep/)[1]) : null;
+    const liveJobs = demoStore.get().jobs.filter(j => j.stage !== "Ready to Invoice" && j.stage !== "Invoiced");
+    const JOB_EVENTS = liveJobs.map(j => {
+      const d = dueDayOf(j.due);
+      if (!d) return null;
+      const tm = (j.due.match(/\d{2}:\d{2}/) || [""])[0];
+      return {day:d, name:j.id + " · " + ((w) => w[0].length <= 6 && w[1] && w[1] !== "&" ? w[0] + " " + w[1] : w[0])(j.customer.split(" ")) + (tm ? " " + tm : ""), time: tm || "17:30",
+        owner:j.customer, color: j.risk === "risk" ? "#e07aa8" : "#6fcfe4", job:true};
+    }).filter(Boolean);
+    const ROUTINE_DAYS = {o5:(d) => wdOf(d) < 5, o7:(d) => wdOf(d) === 4, o8:(d) => wdOf(d) === 0};
+    const MONTH_EVENTS = [];
+    for (let d = 1; d <= 34; d++){
+      JOB_EVENTS.filter(e => e.day === d).forEach(e => MONTH_EVENTS.push(e));
+      Object.keys(ROUTINE_DAYS).forEach(id => {
+        if (!ROUTINE_DAYS[id](d)) return;
+        const w = OPS_DEFS.find(x => x.id === id);
+        if (w) MONTH_EVENTS.push({day:d, name:w.name, time:(w.trigger.match(/\d{2}:\d{2}/) || ["08:00"])[0], owner:w.owner,
+          color: STATUS_TINT[opsStatusOf(w)][0], job:false});
+      });
+    }
     const eventsFor = (d) => MONTH_EVENTS.filter(e => e.day === d);
+    const WEEK = [28,29,30,31,32,33,34];
+    const DAY_LOAD = {};
+    WEEK.forEach(d => { DAY_LOAD[d] = eventsFor(d).length; });
+    const dayCell = (d, tall, maxChips) => {
+      if (d === null) return {date:"", pick:() => {}, chips:[], hasMore:false, moreLabel:"",
+        cellStyle: (tall ? "height:118px" : "min-height:104px") + ";border-radius:var(--r-sm,9px);background:none;border:1px dashed var(--border)"};
+      const today = d === TODAY, sel = st.opsDay === d && !today;
+      const evs = eventsFor(d);
+      const shown = evs.slice(0, maxChips);
+      const more = evs.length - shown.length;
+      return {date: String(d > 30 ? d - 30 : d),
+        cellStyle: (tall ? "height:118px" : "min-height:104px")
+          + ";border-radius:var(--r-sm,9px);cursor:pointer;padding:7px 8px;display:flex;flex-direction:column;gap:4px;overflow:hidden;"
+          + "transition:border-color .2s var(--ease),background .2s var(--ease);"
+          + (today ? "background:var(--accent-faint);border:1.5px solid var(--accent)"
+            : sel ? "background:var(--surface-2);border:1.5px solid var(--border-strong)"
+            : "background:var(--surface-2);border:1px solid var(--border)") + (d > 30 && !tall ? ";opacity:.72" : ""),
+        numStyle: "flex:none;width:21px;height:21px;border-radius:7px;display:flex;align-items:center;justify-content:center;"
+          + "font-family:var(--mono);font-size:11.5px;"
+          + (today ? "background:var(--accent-fill,var(--accent));color:var(--on-accent);box-shadow:var(--accent-glow,none);font-weight:600" : "color:var(--body)"),
+        chips: shown.map(e => ({label:e.name,
+          style: "display:flex;align-items:center;gap:5px;padding:2px 6px;border-radius:var(--chip-r,6px);background:var(--surface);"
+            + "font-size:10px;line-height:1.3;color:var(--body);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+            + "border-left:2.5px solid " + e.color + (e.job ? ";font-family:var(--mono)" : "")})),
+        hasMore: more > 0, moreLabel: "+" + more + " more",
+        pick: () => this.setState({opsDay:d})};
+    };
+    const MONTH = [null].concat(Array.from({length:34}, (_, i) => i + 1));
+    const sched = OPS_DEFS.filter(w => w.triggerKind === "schedule");
+    const jobsThisWeek = JOB_EVENTS.filter(e => WEEK.indexOf(e.day) > -1).length;
 
     const calModel = {
-      monthLabel: st.opsScope === "week" ? "This week · 26 Aug" : "August 2026",
-      hint: "Everything Pulse will do on its own, and when.",
-      load: (st.opsOrder || ["o5","o2","o3","o10","o4","o6","o9","o8"]).length + " routines",
+      monthLabel: st.opsScope === "week" ? "This week · 28 Sep to 4 Oct" : "September 2026",
+      hint: "Routines Pulse runs on its own, and every live job's due date.",
+      load: jobsThisWeek + " jobs due · " + sched.length + " routines",
       scopes: [["week","Week"],["month","Month"]].map(s => ({label:s[1],
         style: "height:26px;padding:0 12px;border:0;border-radius:var(--r-ctl,9px);cursor:pointer;font-size:11.5px;"
           + (st.opsScope === s[0] ? "background:var(--pill-bg);color:var(--pill-ink);font-weight:500;box-shadow:0 2px 5px rgba(0,0,0,.34),0 6px 16px rgba(0,0,0,.22),inset 0 1px 0 rgba(255,255,255,.5);" : "background:none;color:" + DIM),
         pick: () => this.setState({opsScope:s[0]})})),
       dayNames: ["MON","TUE","WED","THU","FRI","SAT","SUN"],
       cellH: st.opsScope === "week" ? "height:118px" : "height:96px",
-      days: (st.opsScope === "week" ? [24,25,26,27,28,29,30]
-        : [null,null,null,null,null,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31]
-      ).map(d => {
-        if (d === null) return {date:"", pick:() => {}, chips:[], hasMore:false,
-          cellStyle: st.opsScope === "week" ? "height:118px" : "height:96px" + ";border-radius:var(--r-sm,9px);background:none;border:1px dashed var(--border)"};
-        const today = d === 26, sel = st.opsDay === d && !today;
-        const evs = eventsFor(d);
-        const shown = evs.slice(0, st.opsScope === "week" ? 4 : 2);
-        const more = evs.length - shown.length;
-        return {date:String(d),
-          cellStyle: (st.opsScope === "week" ? "height:118px" : "height:96px")
-            + ";border-radius:8px;cursor:pointer;padding:7px 8px;display:flex;flex-direction:column;gap:4px;overflow:hidden;"
-            + "transition:border-color .2s var(--ease),background .2s var(--ease);"
-            + (today ? "background:var(--accent-faint);border:1.5px solid var(--accent)"
-              : sel ? "background:var(--surface-2);border:1.5px solid var(--border-strong)"
-              : "background:var(--surface-2);border:1px solid var(--border)"),
-          numStyle: "flex:none;width:20px;height:20px;border-radius:7px;display:flex;align-items:center;justify-content:center;"
-            + "font-family:var(--mono);font-size:11.5px;"
-            + (today ? "background:var(--accent-fill,var(--accent));color:var(--on-accent);box-shadow:var(--accent-glow,none);font-weight:600" : "color:var(--body)"),
-          chips: shown.map(e => ({label:e.name,
-            style: "display:flex;align-items:center;gap:5px;padding:2px 6px;border-radius:var(--chip-r,6px);background:var(--surface);"
-              + "font-size:10px;line-height:1.3;color:var(--body);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
-              + "border-left:2.5px solid " + e.color})),
-          hasMore: more > 0, moreLabel: "+" + more + " more",
-          pick: () => this.setState({opsDay:d})};
-      }),
-      monthTitle: "August 2026",
-      monthDays: [null,null,null,null,null,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31].map(d => {
-        if (d === null) return {date:"", pick:() => {}, chips:[], hasMore:false, moreLabel:"",
-          cellStyle:"min-height:104px;border-radius:var(--r-sm,9px);background:none;border:1px dashed var(--border)"};
-        const today = d === 26, sel = st.opsDay === d && !today;
-        const evs = eventsFor(d);
-        const shown = evs.slice(0, 3);
-        const more = evs.length - shown.length;
-        return {date:String(d),
-          cellStyle: "min-height:104px;border-radius:var(--r-sm,9px);cursor:pointer;padding:8px 9px;display:flex;flex-direction:column;gap:4px;overflow:hidden;"
-            + "transition:border-color .2s var(--ease),background .2s var(--ease);"
-            + (today ? "background:var(--accent-faint);border:1.5px solid var(--accent)"
-              : sel ? "background:var(--surface-2);border:1.5px solid var(--border-strong)"
-              : "background:var(--surface-2);border:1px solid var(--border)"),
-          numStyle: "flex:none;width:21px;height:21px;border-radius:7px;display:flex;align-items:center;justify-content:center;"
-            + "font-family:var(--mono);font-size:12px;"
-            + (today ? "background:var(--accent-fill,var(--accent));color:var(--on-accent);box-shadow:var(--accent-glow,none);font-weight:600" : "color:var(--body)"),
-          chips: shown.map(e => ({label:e.name,
-            style: "display:flex;align-items:center;gap:5px;padding:3px 7px;border-radius:var(--chip-r,6px);background:var(--surface);"
-              + "font-size:10.5px;line-height:1.3;color:var(--body);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
-              + "border-left:2.5px solid " + e.color})),
-          hasMore: more > 0, moreLabel: "+" + more + " more",
-          pick: () => this.setState({opsDay:d})};
-      }),
-      legend: [{label:"Agent routine", bg:"var(--accent)"}, {label:"Automation", bg:"var(--neutral)"}, {label:"Nothing scheduled", bg:"var(--track)"}],
+      days: (st.opsScope === "week" ? WEEK : MONTH).map(d => dayCell(d, st.opsScope === "week", st.opsScope === "week" ? 4 : 2)),
+      monthTitle: "September 2026",
+      monthDays: MONTH.map(d => dayCell(d, false, 3)),
+      legend: [{label:"Job due", bg:"#6fcfe4"}, {label:"Job at risk", bg:"#e07aa8"}, {label:"Routine", bg:GREEN}, {label:"Needs a person", bg:AMBER}],
       weekStats: (() => {
-        const sched = OPS_DEFS.filter(w => w.triggerKind === "schedule");
-        const runs = Object.keys(DAY_LOAD).reduce((n, k) => n + DAY_LOAD[k], 0);
+        const runs = WEEK.reduce((n, d) => n + DAY_LOAD[d], 0);
+        const busiest = WEEK.reduce((a, b) => DAY_LOAD[b] > DAY_LOAD[a] ? b : a, WEEK[0]);
         const hours = OPS_DEFS.reduce((n, w) => n + (parseInt(w.saved, 10) || 0), 0);
-        const busiest = Object.keys(DAY_LOAD).reduce((a, b) => DAY_LOAD[b] > DAY_LOAD[a] ? b : a, "24");
         return [
-          {label:"Runs this week", value:String(runs), note:"across " + sched.length + " routines"},
-          {label:"Busiest day", value:busiest + " Aug", note:DAY_LOAD[busiest] + " scheduled runs"},
-          {label:"Needs a person", value:String(OPS_DEFS.filter(w => opsStatusOf(w) === "approval").length), note:"waiting on an approval"},
-          {label:"Failing", value:String(OPS_DEFS.filter(w => opsStatusOf(w) === "failed").length), note:"routines to look at"},
-          {label:"Time saved", value:hours + "h", note:"per month, all routines"},
-          {label:"Median run", value:"31s", note:"across the last 200 runs"}
+          {label:"Jobs due this week", value:String(jobsThisWeek), note:"from the live job list"},
+          {label:"Busiest day", value:dayName(busiest), note:DAY_LOAD[busiest] + " jobs and routines"},
+          {label:"Needs a person", value:String(OPS_DEFS.filter(w => opsStatusOf(w) === "approval").length), note:"workflows waiting on approval"},
+          {label:"Calendar items", value:String(runs), note:"this week"},
+          {label:"Time saved", value:hours + "h", note:"per month, demo estimate"},
+          {label:"Routines", value:String(sched.length), note:"on a schedule"}
         ];
       })(),
-      nextUp: OPS_DEFS.filter(w => w.triggerKind === "schedule" && opsOn(w)).slice(0, 4).map(w => ({
+      nextUp: sched.filter(opsOn).slice(0, 4).map(w => ({
         name:w.name, when:w.next, owner:w.owner,
         color: STATUS_TINT[opsStatusOf(w)][0]
       })),
-      workload: "Expected workload this week: " + Object.keys(DAY_LOAD).reduce((n, k) => n + DAY_LOAD[k], 0) + " runs across " + OPS_DEFS.filter(w => w.triggerKind === "schedule").length + " routines",
-      recurring: OPS_DEFS.filter(w => w.triggerKind === "schedule").map(w => {
+      workload: "This week: " + jobsThisWeek + " job due dates and " + sched.length + " scheduled routines",
+      recurring: sched.map(w => {
         const on = opsOn(w);
         return {name:w.name, cadence:w.trigger, owner:w.owner, next: on ? w.next : "Paused",
           tileStyle: "width:30px;height:30px;flex:none;border-radius:var(--r-sm,11px);display:flex;align-items:center;justify-content:center;"
@@ -1591,25 +1609,32 @@ export default class PulseLogic extends DCLogic {
           knobBg: on ? "var(--on-accent)" : DIM,
           toggle: () => this.setState(prev => ({opsOff: Object.assign({}, prev.opsOff, {[w.id]: on})}))};
       }),
-      agendaTitle: st.opsDay === 26 ? "Today" : "Wed " + st.opsDay + " Aug",
-      dragHint: true,
-      agenda: (st.opsOrder || ["o5","o2","o3","o10","o4","o6","o9","o8"]).map(id => OPS_DEFS.find(w => w.id === id)).filter(Boolean).map(w => ({
-        time: (w.trigger.match(/\d{2}:\d{2}/) || ["—"])[0],
-        name:w.name, owner:w.owner,
-        color: STATUS_TINT[opsStatusOf(w)][0],
-        opacity: st.opsDrag === w.id ? "0.5" : "1",
-        drag: () => this.setState({opsDrag:w.id}),
-        over: (e) => e.preventDefault(),
-        drop: (e) => { e.preventDefault();
-          this.setState(prev => {
-            const order = (prev.opsOrder || ["o5","o2","o3","o10","o4","o6","o9","o8"]).slice();
-            const from = order.indexOf(prev.opsDrag), to = order.indexOf(w.id);
-            if (from < 0 || to < 0 || from === to) return {opsDrag:null};
-            order.splice(to, 0, order.splice(from, 1)[0]);
-            return {opsOrder:order, opsDrag:null};
-          }); }
+      agendaTitle: st.opsDay === TODAY ? "Today · " + dayName(TODAY) : dayName(st.opsDay),
+      dragHint: false,
+      agenda: eventsFor(st.opsDay).slice().sort((a, b) => a.time < b.time ? -1 : 1).map(e => ({
+        time: e.time, name: e.name, owner: e.owner, color: e.color, opacity: "1",
+        drag: () => {}, over: (ev) => ev.preventDefault(), drop: (ev) => ev.preventDefault()
       }))
     };
+
+    /* The four print workflows as step flows. Customer Change leads. */
+    const flowOf = (w) => {
+      const tint = STATUS_TINT[opsStatusOf(w)];
+      const cr = w.id === "o1" ? demoStore.get().changeState : null;
+      return {name:w.name, owner:w.owner, trigger:w.trigger, what:w.what,
+        runs: (w.runs30 || 0) + " runs · 30 days", last: cr === "approved" ? "CR-118 approved · Docket V3 issued" : cr === "rejected" ? "CR-118 rejected · V2 stays current" : w.last,
+        status: cr === "approved" ? "Completed" : tint[2],
+        statusStyle: "flex:none;padding:3px 10px;border-radius:var(--r-sm,9px);font-size:11px;background:" + (cr === "approved" ? "var(--ok-soft)" : tint[1]) + ";color:" + (cr === "approved" ? GREEN : tint[0]),
+        steps: w.steps.map((s, i) => {
+          const gate = s[2] === "gate", ext = s[2] === "external";
+          const done = cr ? (cr !== "pending" || i < 4) : false;
+          const live = cr === "pending" && gate;
+          return {n:String(i + 1), verb:s[0], detail:s[1], gate, ext, live, done, last: i === w.steps.length - 1};
+        }),
+        open: () => this.setState({opsOpen:w.id})};
+    };
+    opsModel.hero = flowOf(OPS_DEFS.find(w => w.id === "o1"));
+    opsModel.flows = ["o2","o3","o4"].map(id => flowOf(OPS_DEFS.find(w => w.id === id)));
 
     const detailDef = OPS_DEFS.find(w => w.id === st.opsOpen);
     const detailModel = detailDef ? (() => {
@@ -1649,14 +1674,14 @@ export default class PulseLogic extends DCLogic {
 
     const BUILDER_COPY = {
       workflow: {title:"Create a workflow", hint:"PLAIN ENGLISH FIRST",
-        placeholder:"Every Friday, review all open deals. Flag anything inactive for 10 days and prepare a summary for management.",
-        examples:["Chase quotes nobody replied to","Warn me before a certificate lapses"], save:"Create workflow"},
+        placeholder:"When a quote has been sent for 5 days with no reply, draft a follow-up for Emma and flag it on Home.",
+        examples:["Chase quotes nobody replied to","Warn me when a job sits in artwork for 2 days"], save:"Create workflow"},
       schedule: {title:"Schedule a task", hint:"RECURRING WORK",
-        placeholder:"Every Thursday at 9am, check stock against this week's jobs and raise the order lines.",
-        examples:["Monthly VAT return reminder","Weekly van checks"], save:"Schedule it"},
+        placeholder:"Every Monday at 8am, check paper stock against this week's dockets and tell Liam what is short.",
+        examples:["Monthly VAT return reminder","Weekly guillotine blade check"], save:"Schedule it"},
       teach: {title:"Teach an agent", hint:"A NEW ROUTINE FOR AN AGENT",
-        placeholder:"When an invoice goes past 60 days, tell me what changed about how that customer pays before you draft anything.",
-        examples:["Watch payment behaviour","Summarise the week for management"], save:"Teach it"}
+        placeholder:"When a customer asks for a reprint, pull their last docket and prepare a quote in PrintLogic for Emma to check.",
+        examples:["Spot repeat orders due","Summarise the week for Sean"], save:"Teach it"}
     }[st.opsBuilderMode] || {title:"Create a workflow", hint:"PLAIN ENGLISH FIRST", placeholder:"Describe what should happen.", examples:[], save:"Create"};
 
     const builderModel = {
@@ -1664,34 +1689,65 @@ export default class PulseLogic extends DCLogic {
       placeholder:BUILDER_COPY.placeholder, saveLabel:BUILDER_COPY.save,
       text: st.builderText, generated: st.builderGenerated,
       generateLabel: st.builderGenerated ? "Rebuild from the description" : "Build it",
-      footer: st.builderGenerated ? "Steps with effects always wait for your yes" : "Describe the outcome — Pulse works out the steps",
+      footer: st.builderGenerated ? "Steps with effects always wait for your yes" : "Describe the outcome and Pulse works out the steps",
       examples: BUILDER_COPY.examples.map(e => ({label:e, use: () => this.setState({builderText:e, builderGenerated:false})})),
       setText: (e) => this.setState({builderText:e.target.value}),
       generate: () => this.setState({builderGenerated:true}),
       close: () => this.setState({opsBuilderOpen:false}),
       save: () => this.setState({opsBuilderOpen:false, opsFilter:"all"}),
       blocks: [
-        ["TRIGGER", "Every Friday at 17:00", "From “every Friday” in your description", "var(--accent-line)", "var(--accent)"],
-        ["FIND", "All open deals with no activity for 10 days", "", "var(--border)", "var(--faint)"],
-        ["CONDITION", "Skip deals already marked won or lost", "", "var(--border)", "var(--faint)"],
-        ["ACTION", "Flag each one and write a management summary", "", "var(--border)", "var(--faint)"],
-        ["AGENT", "Sales Agent", "It already has the deal context", "var(--border)", "var(--faint)"],
-        ["APPROVAL", "None — nothing leaves Pulse", "Add one if you want it emailed out", "var(--warn-soft)", AMBER],
-        ["ON FAILURE", "Retry twice, then tell Operations", "", "var(--border)", "var(--faint)"],
-        ["NOTIFY", "Post to Home and the management group", "", "var(--border)", "var(--faint)"]
+        ["TRIGGER", "Every weekday at 09:00", "From “5 days with no reply” in your description", "var(--accent-line)", "var(--accent)"],
+        ["FIND", "PrintLogic quotes sent 5 or more days ago", "", "var(--border)", "var(--faint)"],
+        ["CONDITION", "Skip quotes already approved or declined", "", "var(--border)", "var(--faint)"],
+        ["ACTION", "Draft a follow-up email for each one", "", "var(--border)", "var(--faint)"],
+        ["AGENT", "Ops Watchdog", "It already watches quotes and jobs", "var(--border)", "var(--faint)"],
+        ["APPROVAL", "Emma checks each email before it sends", "Nothing reaches a customer without a person", "var(--warn-soft)", AMBER],
+        ["ON FAILURE", "Retry twice, then tell Liam", "", "var(--border)", "var(--faint)"],
+        ["NOTIFY", "Post to Home", "", "var(--border)", "var(--faint)"]
       ].map(b => ({label:b[0], value:b[1], note:b[2], border:b[3], labelColor:b[4], edit: () => {}}))
     };
 
-    /* ---- records: contacts, files, ontology ---- */
+    /* ---- records: customers, jobs, quotes, products, files, ontology ---- */
     const recSec = REC_SECTIONS.find(s => s.id === st.recSection) || REC_SECTIONS[0];
     const askQ = st.recAsk.trim().toLowerCase();
-    const TAG_TINT = {staff:[LIME,""], customer:[BODY,""], supplier:[BODY,""],
-      watch:[AMBER,""], "on stop":[RED,""]};
-    const askTerms = askQ ? askQ.split(/\s+/).filter(w => w.length > 2 &&
-      ["the","and","for","who","any","anyone","all","are","with","from","that","show","find","list","get","people","contact","contacts"].indexOf(w) < 0) : [];
-    const matchedContacts = CONTACTS.filter(c => {
+    const askTerms = askQ ? askQ.split(/\s+/).filter(w => w.length > 1 &&
+      ["the","and","for","who","any","all","are","with","from","that","show","find","list","get"].indexOf(w) < 0) : [];
+    const dsNow = demoStore.get();
+    const eur = (n) => fmtEUR(n);
+    const tagStyleOf = (tone) => "padding:3px 11px;border-radius:var(--r-sm,9px);font-size:11px;white-space:nowrap;background:var(--chip);border:1px solid var(--chip-border);color:"
+      + (tone === "bad" ? RED : tone === "warn" ? AMBER : tone === "ok" ? GREEN : tone === "accent" ? "var(--accent)" : BODY);
+    const REC_ROWS = {
+      customers: P_CUSTOMERS.map(c => {
+        const active = dsNow.jobs.filter(j => j.customerId === c.id && j.stage !== "Invoiced").length;
+        return {id:c.id, name:c.name, role:c.contact + " · " + c.frequent.slice(0, 2).join(", "),
+          email:eur(c.revenue12m) + " · " + c.lifetimeJobs + " jobs", org:active ? active + " active · " + c.terms : c.terms,
+          tag: c.outstanding ? eur(c.outstanding) + " owed" : c.channel, tone: c.outstanding ? "warn" : c.channel === "Online" ? "accent" : "",
+          bg:"#6fcfe4", open: () => demoStore.openCustomer(c.id)};
+      }),
+      jobs: dsNow.jobs.map(j => ({id:j.id, name:j.id + " · " + j.customer,
+        role:j.qty.toLocaleString("en-IE") + " " + j.product, email:j.stage + " · " + j.status,
+        org:eur(j.value) + " · due " + j.due,
+        tag: j.id === P_CHANGE.jobId && dsNow.changeState === "pending" ? "Change pending" : j.risk === "risk" ? "At risk" : j.risk === "watch" ? "Watch" : "Docket V" + j.docketV,
+        tone: j.risk === "risk" ? "bad" : j.risk === "watch" ? "warn" : "",
+        bg: j.source === "Website" ? "#9fb4ff" : "#e8e2d4", initials: j.id.slice(-2), open: () => demoStore.openJob(j.id)})),
+      quotes: dsNow.jobs.filter(j => j.quote).map(j => {
+        const revised = j.id === P_CHANGE.jobId && dsNow.changeState === "approved";
+        return {id:j.quote, name:(revised ? j.quote + "-R1" : j.quote) + " · " + j.customer, role:j.qty.toLocaleString("en-IE") + " " + j.product,
+          email:"PrintLogic · became " + j.id, org:eur(j.value),
+          tag: j.id === P_CHANGE.jobId ? (dsNow.changeState === "pending" ? "Requote pending" : revised ? "Revised · approved" : "Won") : j.stage === "Invoiced" ? "Invoiced" : "Won",
+          tone: j.id === P_CHANGE.jobId && dsNow.changeState === "pending" ? "warn" : "ok",
+          bg:"#9fb4c8", initials:"Q", open: () => demoStore.openJob(j.id)};
+      }).concat(CONTACTS.map(q => ({id:q[0], name:q[0] + " · " + q[1], role:q[2], email:"PrintLogic · not yet a job", org:eur(q[3]),
+        tag:q[4], tone:"", bg:"#9fb4c8", initials:"Q", open: () => demoStore.openCustomer(q[5])}))),
+      products: P_PRODUCTS.map(p => ({id:p.name, name:p.name, role:p.orders + " online orders",
+        email:eur(p.revenue) + " revenue", org:eur(p.revenue / p.orders) + " average",
+        tag:p.repeat + "% repeat", tone: p.repeat >= 50 ? "ok" : "", bg:"#c9b98a",
+        open: () => demoStore.go("Online Orders", "products")}))
+    };
+    const secRows = REC_ROWS[recSec.id] || [];
+    const matchedContacts = secRows.filter(r => {
       if (!askTerms.length) return true;
-      const hay = c.slice(0, 5).join(" ").toLowerCase();
+      const hay = (r.name + " " + r.role + " " + r.email + " " + r.org + " " + r.tag).toLowerCase();
       return askTerms.some(t => hay.indexOf(t) > -1);
     });
 
@@ -1720,61 +1776,73 @@ export default class PulseLogic extends DCLogic {
         pick: () => this.setState({treeFile:r.id})};
     });
 
-    const ontoKind = {entity:["var(--accent)", INK], ledger:["var(--neutral)", BODY],
-      module:["#9fd6f0", INK], predicate:["transparent", DIM]};
-    const ontoSel = ONTO_NODES.find(n => n[0] === st.ontoNode) || ONTO_NODES[0];
-
     const HERO = {
-      contacts:{eyebrow:"CONTACTS · " + CONTACTS.length + " ON FILE", title:"Everyone you deal with",
-        blurb:"Staff and external in one place. Ask in your own words — it matches on name, role, organisation and tag.",
-        placeholder:"Try “buyers in Cork”, “installers”, “on stop”…", kind:"KEYWORD", scroll:"SCROLL FOR THE FULL LIST",
-        suggestions:["on stop","installer","Casey","supplier"]},
+      customers:{eyebrow:"CUSTOMERS · " + P_CUSTOMERS.length + " ACCOUNTS", title:"Who you print for",
+        blurb:"Accounts and online customers: what they order, what they are on, and anything owed. Balances come from Big Red Cloud.",
+        placeholder:"Try “owed”, “online”, “folders”, “Byrne”…", kind:"KEYWORD", scroll:"SCROLL FOR THE FULL LIST",
+        suggestions:["owed","Online","Presentation Folders","Byrne"], table:"Customers", unit:"customers"},
+      jobs:{eyebrow:"JOBS · " + dsNow.jobs.length + " ON RECORD", title:"One record per job",
+        blurb:"Quote, docket, artwork, production and invoice on the same record. Nothing typed twice.",
+        placeholder:"Try “at risk”, “artwork”, “Website”, “J-10482”…", kind:"KEYWORD", scroll:"SCROLL FOR EVERY JOB",
+        suggestions:["at risk","Artwork","Printing","J-10482"], table:"Jobs", unit:"jobs"},
+      quotes:{eyebrow:"QUOTES · FROM PRINTLOGIC", title:"Every quote, linked to its job",
+        blurb:"Priced in PrintLogic. An approved quote becomes a Pulse job automatically.",
+        placeholder:"Try “Q-2487”, “requote”, “awaiting”…", kind:"KEYWORD", scroll:"SCROLL FOR THE FULL LIST",
+        suggestions:["Q-2487","requote","awaiting","folders"], table:"Quotes", unit:"quotes"},
+      products:{eyebrow:"PRODUCTS · " + P_PRODUCTS.length + " IN THE CATALOGUE", title:"What customers order",
+        blurb:"The catalogue behind the website and the counter. Demo figures, not verified against the real price list.",
+        placeholder:"Try “cards”, “repeat”, “menus”…", kind:"KEYWORD", scroll:"SCROLL FOR THE CATALOGUE",
+        suggestions:["Cards","Flyers","Menus","Booklets"], table:"Products", unit:"products"},
       files:{eyebrow:"FILES · " + FILE_TREE.filter(r => r.type === "file").length + " DOCUMENTS",
-        title:"Everything on record", blurb:"Contracts, certificates and invoices. Indexed pages are the ones Helios can read from.",
-        placeholder:"Search inside every document…", kind:"FULL TEXT", scroll:"SCROLL FOR THE VIEWER",
-        suggestions:["credit","expiry","framework","invoice"]},
+        title:"Artwork, dockets and emails", blurb:"Filed against the job they belong to. Indexed files are the ones Pulse can read and answer from.",
+        placeholder:"Search inside every file…", kind:"FULL TEXT", scroll:"SCROLL FOR THE VIEWER",
+        suggestions:["superseded","names","Stripe","Big Red Cloud"], table:"Files", unit:"files"},
       ontology:{eyebrow:"ONTOLOGY", title:"Ontology", blurb:recSec.blurb,
-        placeholder:"", kind:"", scroll:"", suggestions:[]}
+        placeholder:"", kind:"", scroll:"", suggestions:[], table:"", unit:""}
     }[recSec.id];
+    const COLS = {
+      customers:["Customer","Contact · usually orders","12 months","Terms","Status"],
+      jobs:["Job","Product","Stage","Value · due","Flag"],
+      quotes:["Quote","Product","Source","Value","Status"],
+      products:["Product","Orders","Revenue","Average","Repeat"]
+    };
+    const isTable = ["customers","jobs","quotes","products"].indexOf(recSec.id) > -1;
 
     const recModel = {
       title: HERO.title, blurb: HERO.blurb,
       eyebrow: HERO.eyebrow, askPlaceholder: HERO.placeholder,
       searchKind: HERO.kind, scrollHint: HERO.scroll,
       hasHero: page === "Records" && recSec.id !== "ontology",
-      isContacts: page === "Records" && recSec.id === "contacts",
+      isContacts: page === "Records" && isTable,
       isFiles: page === "Records" && recSec.id === "files",
       isOntology: page === "Records" && recSec.id === "ontology",
       openNew: () => this.setState({newRecOpen:true, newRecName:"", newRecTemplate:"Field sheet"}),
-      // On Files the hero field IS the in-file search, so there is only ever one
-      // search box on the page and it always drives what is shown below.
       ask: recSec.id === "files" ? st.treeQuery : st.recAsk,
       asking: recSec.id === "files" ? fileQ.length > 0 : askTerms.length > 0,
       notAsking: recSec.id === "files" ? fileQ.length === 0 : askTerms.length === 0,
       setAsk: (e) => this.setState(recSec.id === "files" ? {treeQuery:e.target.value} : {recAsk:e.target.value}),
       clearAsk: () => this.setState(recSec.id === "files" ? {treeQuery:""} : {recAsk:""}),
       askAnswer: recSec.id === "files"
-        ? (fileHits ? fileHits + " of " + FILE_TREE.filter(r => r.type === "file").length + " documents contain that" : "No document contains that")
+        ? (fileHits ? fileHits + " of " + FILE_TREE.filter(r => r.type === "file").length + " files contain that" : "No file contains that")
         : (matchedContacts.length
-          ? matchedContacts.length + " of " + CONTACTS.length + " match — on name, role, organisation and tag"
-          : "Nothing matched. It searches name, role, organisation and tag only."),
+          ? matchedContacts.length + " of " + secRows.length + " " + HERO.unit + " match"
+          : "Nothing matched. Try fewer words."),
       askTerms,
       askSuggestions: HERO.suggestions.map(s => ({label:s,
         use: () => this.setState(recSec.id === "files" ? {treeQuery:s} : {recAsk:s})})),
-      contactCols: ["Name","Role","Email","Organisation","Tag"],
+      tableTitle: HERO.table,
+      contactCols: COLS[recSec.id] || [],
       tableCaption: askTerms.length
         ? "Filtered by " + askTerms.map(t => "“" + t + "”").join(" or ")
-        : "Staff, customers and suppliers as one set of records.",
-      tableBadge: matchedContacts.length + " / " + CONTACTS.length,
-      tableFooter: "Showing " + matchedContacts.length + " of " + CONTACTS.length + " contacts",
+        : recSec.blurb,
+      tableBadge: matchedContacts.length + " / " + secRows.length,
+      tableFooter: "Showing " + matchedContacts.length + " of " + secRows.length + " " + HERO.unit + " · click a row to open it",
+      emptyTitle: "No " + HERO.unit + " match",
       contactsEmpty: matchedContacts.length === 0,
-      contacts: matchedContacts.map(c => {
-        const tint = TAG_TINT[c[4]] || [BODY,""];
-        return {name:c[0], role:c[1], email:c[2], org:c[3], tag:c[4], bg:c[5],
-          initials: c[0].split(" ").map(w => w[0]).slice(0,2).join(""),
-          tagStyle: "padding:3px 11px;border-radius:var(--r-sm,9px);font-size:11px;background:var(--chip);border:1px solid var(--chip-border);color:" + tint[0],
-          open: () => this.setState({recSection:"files"})};
-      })
+      contacts: matchedContacts.map(r => ({name:r.name, role:r.role, email:r.email, org:r.org, tag:r.tag, bg:r.bg,
+        initials: r.initials || r.name.split(" ").filter(w => /^[A-Za-z]/.test(w)).map(w => w[0]).slice(0, 2).join("").toUpperCase(),
+        tagStyle: tagStyleOf(r.tone),
+        open: r.open}))
     };
 
     const treeModel = {
@@ -1790,7 +1858,8 @@ export default class PulseLogic extends DCLogic {
       facts: activeFile ? activeFile.facts.map(k => ({k:k[0], v:k[1]})) : [],
       body: activeFile ? activeFile.body : [],
       links: activeFile ? activeFile.links.map(l => ({label:l[0],
-        open: () => this.setState({recSection: l[1] === "person" || l[1] === "org" ? "contacts" : "ontology"})})) : []
+        open: () => l[1] === "customer" ? demoStore.openCustomer(l[2]) : l[1] === "job" ? demoStore.openJob(l[2])
+          : this.setState({recSection:"ontology", ontoNode: ONTO_NODES.find(n => l[0].indexOf(n.id) > -1) ? ONTO_NODES.find(n => l[0].indexOf(n.id) > -1).id : "Job"})})) : []
     };
 
     /* ---- admin ---- */
@@ -1923,7 +1992,7 @@ export default class PulseLogic extends DCLogic {
         const tint = it.tint === "var(--accent)" ? "var(--accent)" : it.tint;
         const alpha = (hex, a) => hex.charAt(0) === "#" ? hex + a : hex;
         return {name:it.name, glyph:it.glyph, blurb:it.blurb,
-          pairTitle: "Pulse + " + it.name,
+          pairTitle: it.statusKind === "off" ? it.name + " · not integrated" : "Pulse + " + it.name,
           status:it.status,
           statusStyle:"flex:none;padding:3px 10px;border-radius:var(--chip-r,7px);font-size:10.5px;font-weight:500;background:" + kindTint[1] + ";color:" + kindTint[0],
           lastSync:it.lastSync, usage:it.usage, auth:it.auth,
@@ -1955,7 +2024,7 @@ export default class PulseLogic extends DCLogic {
           toggleKnobStyle: "position:absolute;top:2px;left:" + (on ? "22px" : "2px") + ";width:20px;height:20px;border-radius:var(--r-sm,10px);"
             + "background:" + (on ? "var(--on-accent)" : "var(--dim)") + ";transition:left .24s var(--ease),background .24s var(--ease)",
           toggle: () => this.setState(p => ({intOff: Object.assign({}, p.intOff, {[it.name]: on})})),
-          actionLabel: it.statusKind === "bad" ? "Reconnect" : it.statusKind === "off" ? "Connect" : "View integration",
+          actionLabel: it.action || (it.statusKind === "bad" ? "Reconnect" : it.statusKind === "off" ? "Connect" : "View integration"),
           actionStyle: "height:32px;padding:0 14px;border-radius:var(--r-ctl,10px);font-size:12.5px;cursor:pointer;transition:border-color .2s var(--ease),color .2s var(--ease);"
             + (it.statusKind === "bad"
                 ? "background:var(--bad-soft);border:1px solid " + RED + ";color:" + RED
@@ -1983,12 +2052,12 @@ export default class PulseLogic extends DCLogic {
     };
 
     const adminModel = {
-      company: "Kilbride Group",
+      company: COMPANY.name + " (working name, to be confirmed)",
       urgent: [
-        ["3", "employees awaiting access", AMBER, "var(--warn-soft)", "people"],
-        ["1", "integration disconnected", RED, "var(--bad-soft)", "integrations"],
-        ["74", "duplicate records", AMBER, "var(--warn-soft)", "health"],
-        ["2", "security recommendations", AMBER, "var(--warn-soft)", "security"]
+        ["5", "systems connected", GREEN, "var(--ok-soft)", "integrations"],
+        ["1", "company name to confirm", AMBER, "var(--warn-soft)", "structure"],
+        ["6", "duplicate customers", AMBER, "var(--warn-soft)", "health"],
+        ["7", "staff with access", GREEN, "var(--ok-soft)", "people"]
       ].map(u => ({count:u[0], label:u[1], dot:u[2], border:u[3],
         go: () => this.setState({adminOpen:u[4]})})),
       panelAnim: "animation:" + ((st.adminTick || 0) ? "panelSwapB" : "panelSwapA")
@@ -2063,7 +2132,7 @@ export default class PulseLogic extends DCLogic {
     };
 
     /* ---- activity ---- */
-    const feeds = this.feeds || {data:[], people:[], ai:[]};
+    const feeds = this.buildFeeds(); this.feeds = feeds;
     const allEvents = STREAM_DEFS.flatMap(d => feeds[d.id] || []);
     const ago = (at) => {
       const s = Math.max(1, Math.round((Date.now() - at) / 1000));
@@ -2084,6 +2153,7 @@ export default class PulseLogic extends DCLogic {
       if (st.actKpi === "all") return true;
       if (st.actKpi === "people") return e.stream === "people";
       if (st.actKpi === "ai") return e.stream === "ai";
+      if (st.actKpi === "system") return e.stream === "data";
       if (st.actKpi === "attention") return e.status === "failed" || e.status === "awaiting";
       return true;
     };
@@ -2114,7 +2184,7 @@ export default class PulseLogic extends DCLogic {
         style: "display:flex;flex-direction:column;gap:10px;width:100%;padding:14px 15px;text-align:left;cursor:pointer;"
           + "background:var(--surface);border:1px solid var(--border);border-radius:var(--card-r,18px);backdrop-filter:blur(20px);"
           + "transition:border-color .22s var(--ease),transform .2s var(--ease);animation:glide .5s var(--ease) " + (i * 60) + "ms both",
-        go: () => this.setState({page:"Agents", agentOpen:a.id})};
+        go: () => this.setState({page:"Agents", agentId:a.id})};
     });
     /* Needs attention is a triage queue, not a feed: one row per distinct
        problem, deduped and oldest first, each answering what happened, why it
@@ -2126,8 +2196,8 @@ export default class PulseLogic extends DCLogic {
       .filter(e => { const k = e.title + "|" + e.actor + "|" + e.rel; if (seenTri[k]) return false; seenTri[k] = 1; return true; })
       .sort((a, b) => a.at - b.at);
     const WHY = {
-      failed: ["Nothing was lost — the work is queued and posts on reconnect.", "Retry", "Open the connection"],
-      awaiting: ["Drafted and parked. It only moves when you say yes.", "Review and decide", "Open the record"]
+      failed: ["Nothing was lost. The work is queued and posts on reconnect.", "Retry", "Open the job"],
+      awaiting: ["Prepared and parked. It only moves when you say yes.", "Review and decide", "Open the job"]
     };
     const triageGroups = [
       ["failed", "FAILED", "Stopped working. Nothing lost.", RED, "var(--bad-soft)"],
@@ -2148,14 +2218,14 @@ export default class PulseLogic extends DCLogic {
           style: "position:relative;display:flex;flex-direction:column;gap:9px;padding:15px 17px 15px 19px;background:var(--surface);"
             + "border:1px solid var(--border);border-radius:var(--card-r,18px);backdrop-filter:blur(20px);overflow:hidden;"
             + "transition:border-color .22s var(--ease);animation:glide .5s var(--ease) " + (i * 55) + "ms both",
-          open: () => this.setState({actOpen:e.id})
+          open: () => e.jobId ? demoStore.openJob(e.jobId) : this.setState({actOpen:e.id})
         }))};
     });
     /* The People lens answers who is doing what right now — a roster of the
        staff with access, what each last touched, and what is parked on them. */
     const peopleLens = st.actKpi === "people";
     const peopleEvents = (feeds.people || []);
-    const staff = PEOPLE.slice(0, 6);
+    const staff = DEMO_STAFF.slice(0, 6).map(p => [p.name, p.role, "", "Murphy Print"]);
     const P_STATE = [[LIME,"active now"],[LIME,"active now"],["#6ad0f0","in a record"],[GREEN,"idle"],[AMBER,"away"],[GREEN,"idle"]];
     const actsFor = (i) => [38,31,24,17,11,6][i] || 4;
     const peopleRoster = staff.map((p, i) => {
@@ -2178,26 +2248,31 @@ export default class PulseLogic extends DCLogic {
         style: "display:flex;flex-direction:column;gap:10px;width:100%;padding:14px 15px;text-align:left;cursor:pointer;"
           + "background:var(--surface);border:1px solid var(--border);border-radius:var(--card-r,18px);backdrop-filter:blur(20px);"
           + "transition:border-color .22s var(--ease),transform .2s var(--ease);animation:glide .5s var(--ease) " + (i * 60) + "ms both",
-        go: () => this.setState({page:"People"})};
+        go: () => this.setState({actKpi:"people"})};
     });
+    const systemLens = st.actKpi === "system";
+    const nPeople = (feeds.people || []).length, nAgent = (feeds.ai || []).length, nSys = (feeds.data || []).length;
+    const nAttn = allEvents.filter(e => e.status === "awaiting").length;
     const actModel = {
       agentLens, attentionLens, peopleLens,
       genericLens: !agentLens && !attentionLens && !peopleLens,
       showLanes: !attentionLens,
-      eyebrow: agentLens ? "AGENT ACTIVITY" : attentionLens ? "TRIAGE" : peopleLens ? "PEOPLE ACTIVITY" : "ACTIVITY",
-      heading: agentLens ? "What the agents did" : attentionLens ? "What needs you" : peopleLens ? "Who did what" : "Everything happening now",
+      eyebrow: agentLens ? "AGENT ACTIVITY" : attentionLens ? "TRIAGE" : peopleLens ? "PEOPLE ACTIVITY" : systemLens ? "SYSTEMS" : "ACTIVITY",
+      heading: agentLens ? "What the agents did" : attentionLens ? "What needs you" : peopleLens ? "Who did what" : systemLens ? "What the systems sent in" : "Everything happening in the building",
       subhead: agentLens
-        ? solo.length + " agents are registered. Every action below went through a tool they were granted, and anything that changes data is still waiting on you."
+        ? solo.length + " agents are running. Every docket, change request and invoice they prepared is below, and anything that changes a job waited for a yes."
         : attentionLens
-          ? "Everything that stopped working or is parked waiting on a decision, oldest first. Nothing here has been lost."
+          ? "Everything parked waiting on a decision or a customer, oldest first. Click one to open the job."
           : peopleLens
-            ? "42 of 48 staff have used Pulse today. Every edit, approval and decision below is written against the person who made it."
-            : "Data arriving, people acting and agents working — then the audit trail underneath.",
+            ? "Every approval, press start and collection below is written against the person who did it."
+            : systemLens
+              ? "Quotes from PrintLogic, payments from Stripe, customer email and Big Red Cloud syncs, as they arrived."
+              : "Systems sending data in, people on the floor and agents working, then the full log underneath. Click an event to open its job.",
       peopleKpis: [
-        ["Active today", "42 of 48", "signed in and working", LIME],
-        ["Decisions made", "27", "approvals and sign-offs", GREEN],
-        ["Waiting on someone", "5", "parked on a person", AMBER],
-        ["Records touched", "184", "edits written to the spine", "#6ad0f0"]
+        ["On today", DEMO_STAFF.length + " of " + DEMO_STAFF.length, "the whole team", LIME],
+        ["Actions logged", String(nPeople), "approvals, press starts, collections", GREEN],
+        ["Waiting on someone", String(nAttn), "parked on a person or customer", AMBER],
+        ["Jobs touched", String(new Set((feeds.people || []).map(e => e.jobId).filter(Boolean)).size), "live jobs moved today", "#6ad0f0"]
       ].map((k, ki) => ({label:k[0], value:k[1], hint:k[2], dot:k[3],
         valueColor: k[3] === RED || k[3] === AMBER ? k[3] : INK,
         style: "padding:15px 17px 17px;border-radius:var(--card-r,18px);text-align:left;background:var(--surface);border:1px solid var(--border);"
@@ -2209,13 +2284,13 @@ export default class PulseLogic extends DCLogic {
         ["Failed", String(attentionItems.filter(e => e.status === "failed").length), "queued, nothing lost", RED],
         ["Awaiting your yes", String(attentionItems.filter(e => e.status === "awaiting").length), "drafted, never sent", AMBER],
         ["Oldest wait", attentionItems.length ? shortAgo(attentionItems[0].at) : "—", "since it was raised", "#6ad0f0"],
-        ["Retried automatically", "12", "cleared without you", LIME]
+        ["Resolved today", String(allEvents.filter(e => e.kind === "attention" && e.status === "completed").length), "cleared after a decision", LIME]
       ].map((k, ki) => ({label:k[0], value:k[1], hint:k[2], dot:k[3],
         valueColor: k[3] === RED || k[3] === AMBER ? k[3] : INK,
         style: "padding:15px 17px 17px;border-radius:var(--card-r,18px);text-align:left;background:var(--surface);border:1px solid var(--border);"
           + "backdrop-filter:blur(20px);animation:springIn .5s var(--ease) " + (ki * 70) + "ms both"})),
       agentKpis: [
-        ["Actions today", "318", "through granted tools", LIME],
+        ["Actions today", String(nAgent), "dockets, changes, orders, invoices", LIME],
         ["Working now", String(solo.filter(a => a.state === "working" || a.state === "thinking").length) + " of " + solo.length, "the rest are idle", "#6ad0f0"],
         ["Waiting on your yes", String(solo.filter(a => a.state === "waiting").length), "drafted, never sent", AMBER],
         ["Needs attention", String(solo.filter(a => a.state === "attention").length), "failed or blocked", RED]
@@ -2224,7 +2299,7 @@ export default class PulseLogic extends DCLogic {
         style: "padding:15px 17px 17px;border-radius:var(--card-r,18px);text-align:left;background:var(--surface);border:1px solid var(--border);"
           + "backdrop-filter:blur(20px);animation:springIn .5s var(--ease) " + (ki * 70) + "ms both"})),
       roster: agentRoster,
-      laneCols: (agentLens || peopleLens) ? "minmax(0,1fr)" : "repeat(3,minmax(0,1fr))",
+      laneCols: (agentLens || peopleLens || systemLens) ? "minmax(0,1fr)" : "repeat(3,minmax(0,1fr))",
       togglePause: () => this.setState(p => ({actPaused: !p.actPaused})),
       pauseLabel: st.actPaused ? "Resume live view" : "Pause live view",
       pauseIcon: st.actPaused ? "M7 4.5v15l13-7.5-13-7.5Z" : "M9 5.5v13 M15 5.5v13",
@@ -2233,10 +2308,11 @@ export default class PulseLogic extends DCLogic {
         + (st.actPaused ? "background:var(--accent);border:1px solid var(--accent);color:var(--on-accent)"
                         : "background:var(--chip);border:1px solid var(--chip-border);color:var(--body)"),
       kpis: [
-        ["Events today", "1,284", "all", "across every source", LIME],
-        ["Employees active", "42", "people", "of 48 with access", "#f0c04b"],
-        ["AI actions", "318", "ai", "by " + solo.length + " installed agents", "#6ad0f0"],
-        ["Need attention", "7", "attention", "failed or awaiting a yes", RED]
+        ["Events today", String(allEvents.length), "all", "across every source", LIME],
+        ["People", String(nPeople), "people", "actions by the team", "#f0c04b"],
+        ["Agents", String(nAgent), "ai", "by " + solo.length + " agents", "#6ad0f0"],
+        ["Systems", String(nSys), "system", "PrintLogic, Stripe, Email, Big Red Cloud", "#8fd6a8"],
+        ["Attention", String(nAttn), "attention", "waiting on a decision", RED]
       ].map((k, ki) => {
         const on = st.actKpi === k[2];
         return {label:k[0], value:k[1], hint:k[3], dot:k[4],
@@ -2250,7 +2326,8 @@ export default class PulseLogic extends DCLogic {
           pick: () => this.setState({actKpi: on ? "all" : k[2]})};
       }).map((k, ki) => Object.assign(k, {style: k.style + ";animation:springIn .5s var(--ease) " + (ki * 70) + "ms both"})),
       streams: (agentLens ? STREAM_DEFS.filter(d => d.id === "ai")
-        : peopleLens ? STREAM_DEFS.filter(d => d.id === "people") : STREAM_DEFS).map((d, di) => {
+        : peopleLens ? STREAM_DEFS.filter(d => d.id === "people")
+        : systemLens ? STREAM_DEFS.filter(d => d.id === "data") : STREAM_DEFS).map((d, di) => {
         const items = (feeds[d.id] || []).filter(kpiMatch);
         const hovered = st.actHover === d.id;
         return {title:d.title, sub:d.sub, icon:d.icon, tint:d.tint, delay: (di * 110) + "ms",
@@ -2266,7 +2343,7 @@ export default class PulseLogic extends DCLogic {
               // Only unfinished work earns a chip; everything else says it with the rail.
               showChip: e.status !== "completed",
               rail: e.status === "completed" ? "var(--track)" : t[0],
-              actor: e.actor, rel: e.rel, short: shortAgo(e.at),
+              actor: e.actor, rel: e.rel, short: e.t,
               srcAbbr: SRC_ABBR[e.src] || "PL", srcTint: SRC_TINT[e.src] || LIME,
               isWorking: e.status === "working", progress: Math.round(e.progress) + "%",
               style: "position:relative;padding:9px 11px 10px 13px;border-radius:var(--r-sm,10px);cursor:pointer;margin-bottom:3px;"
@@ -2276,7 +2353,7 @@ export default class PulseLogic extends DCLogic {
                   ? (e.status === "failed" ? "animation:cardIn .34s var(--ease) both,failFlash .9s var(--ease) 1"
                                            : "animation:cardIn .34s var(--ease) both,glowIn 1.4s var(--ease) 1")
                   : ""),
-              open: () => this.setState({actOpen:e.id})};
+              open: () => e.jobId ? demoStore.openJob(e.jobId) : this.setState({actOpen:e.id})};
           })};
       }),
       query: st.actQuery,
@@ -2287,38 +2364,38 @@ export default class PulseLogic extends DCLogic {
         : "Filtered by the metric above.",
       auditBadge: auditRows.length + " shown",
       auditFooter: "Showing " + auditRows.length + " of " + allEvents.length + " events in this session",
-      auditFilters: ["Last 24 hours","Anyone","Any system","Any type","Any status"].map(l => ({label:l,
+      auditFilters: ["Today","Anyone","Any system","Any job","Any status"].map(l => ({label:l,
         style: "height:34px;display:flex;align-items:center;gap:7px;padding:0 13px;background:var(--chip);border:1px solid var(--chip-border);"
           + "border-radius:var(--r-sm,9px);font-size:12.5px;color:var(--dim);cursor:pointer;white-space:nowrap;transition:border-color .2s var(--ease),color .2s var(--ease)",
         pick: () => {}})),
       audit: auditRows.slice(0, 12).map(e => ({
-        when: new Date(e.at).toLocaleTimeString("en-IE", {hour:"2-digit", minute:"2-digit", second:"2-digit"}),
+        when: e.t,
         title:e.title, actor:e.actor, rel:e.rel, src:e.src,
         status: (STATUS_TINT2[e.status] || STATUS_TINT2.completed)[2],
         statusStyle: statusChip(e.status),
-        open: () => this.setState({actOpen:e.id})
+        open: () => e.jobId ? demoStore.openJob(e.jobId) : this.setState({actOpen:e.id})
       })),
       detailOpen: !!openEvent,
       closeDetail: () => this.setState({actOpen:null}),
       detail: openEvent ? (() => {
         const t = STATUS_TINT2[openEvent.status] || STATUS_TINT2.completed;
-        const streamName = {data:"NEW DATA", people:"EMPLOYEE ACTIVITY", ai:"AI ACTIVITY"}[openEvent.stream];
+        const streamName = {data:"SYSTEMS", people:"PEOPLE", ai:"AGENTS"}[openEvent.stream];
         return {eyebrow: streamName + " · " + openEvent.src.toUpperCase(),
           title:openEvent.title, note:openEvent.note, status:t[2],
           statusStyle: statusChip(openEvent.status),
           why: openEvent.stream === "ai"
-            ? "An agent routine matched this record, so the agent acted within the permissions it was granted."
+            ? "An agent acted on this job within the permissions it was granted. Anything that changes a job waits for a yes."
             : openEvent.stream === "data"
-              ? "The source system pushed this in, and the record spine matched it to an existing account."
-              : "A person with the permission to do it made this decision, and it was written as them.",
+              ? "The source system pushed this in and Pulse matched it to the live job, so nobody retyped it."
+              : "A member of the team did this, and it was written against their name.",
           facts: [{k:"RESPONSIBLE", v:openEvent.actor}, {k:"SOURCE SYSTEM", v:openEvent.src},
             {k:"RELATED RECORD", v:openEvent.rel}, {k:"STATUS", v:t[2]},
-            {k:"WHEN", v: new Date(openEvent.at).toLocaleTimeString("en-IE")},
+            {k:"WHEN", v: openEvent.t},
             {k:"EVENT ID", v: openEvent.id.toUpperCase()}],
           hasDiff: openEvent.stream === "people" || openEvent.stream === "data",
-          diff: [{field:"Status", before:"active", after:"on stop"},
-            {field:"Credit limit", before:"€20,000", after:"€20,000"},
-            {field:"Billing email", before:"—", after:"accounts@dunneandsons.ie"}],
+          diff: [{field:"Job", before:openEvent.rel, after:openEvent.rel},
+            {field:"Source", before:openEvent.src, after:"Pulse job record"},
+            {field:"Re-keyed", before:"Yes", after:"No"}],
           related: [openEvent.rel, openEvent.actor, openEvent.src],
           audit: "Written to the event log · immutable · " + openEvent.id.toUpperCase(),
           canUndo: openEvent.stream === "people" && openEvent.status === "completed"};
@@ -2368,49 +2445,56 @@ export default class PulseLogic extends DCLogic {
         : ""
     };
 
+    /* Print ontology schema: clickable entities, labelled edges, and a detail
+       panel that follows one real chain (Byrne & Co through to invoice). */
+    const ontoSel = ONTO_NODES.find(n => n.id === st.ontoNode) || ONTO_NODES.find(n => n.id === "Job");
+    const crState = demoStore.get().changeState;
+    const exampleOf = (n) => n.id === "Docket" ? (crState === "approved" ? "Docket V3 · current" : "Docket V2 · current, V3 on approval")
+      : n.id === "Artwork" ? (crState === "approved" ? "Artwork V3 · revision in progress" : "Artwork V2 · V3 on approval")
+      : n.id === "Change Request" ? "CR-118 · " + (crState === "pending" ? "awaiting Sean" : crState)
+      : n.id === "Production" ? "Digital Press 1 · " + (crState === "pending" ? "paused" : "re-slotted")
+      : n.example;
+    const nodeW = 128;
+    const center = (id) => { const n = ONTO_NODES.find(x => x.id === id); return [n.x, n.y]; };
+    const touches = (e) => e[0] === ontoSel.id || e[1] === ontoSel.id;
     const ontoModel = {
-      edges: ONTO_EDGES.map(e => {
-        const near = ontoSel && (Math.abs(e[0] - ontoSel[2]) < 2 && Math.abs(e[1] - ontoSel[3]) < 2)
-          || (Math.abs(e[2] - ontoSel[2]) < 2 && Math.abs(e[3] - ontoSel[3]) < 2);
-        return {x1:e[0], y1:e[1], x2:e[2], y2:e[3],
-          stroke: near ? "var(--accent-line)" : "var(--border)", width: near ? 1.6 : 1};
-      }),
-      // Predicates are edge labels, so they render inside the viewBox and scale
-      // with the geometry instead of competing with the fixed-width node pills.
-      labels: ONTO_NODES.filter(n => n[1] === "predicate").map(n => {
-        const w = Math.round(n[0].length * 12.2 + 34);
-        return {label:n[0], rx:n[2] - w / 2, ry:n[3] - 18, rw:w,
-          stroke: st.ontoNode === n[0] ? "var(--accent-line)" : "var(--border)"};
-      }),
-      nodes: ONTO_NODES.filter(n => n[1] !== "predicate").map(n => {
-        const [label, kind, x, y, big] = n;
-        const tint = ontoKind[kind];
-        const on = st.ontoNode === label, hot = st.ontoHover === label;
-        const isPred = kind === "predicate";
-        return {label, fontSize: isPred ? "10.5px" : big ? "13.5px" : "12.5px",
-          ink: isPred ? DIM : tint[1],
-          dotStyle: isPred ? "display:none"
-            : "width:" + (big ? "10px" : "8px") + ";height:" + (big ? "10px" : "8px") + ";border-radius:var(--r-sm,9px);background:" + tint[0],
-          style: "position:absolute;left:" + (7 + x * 0.086) + "%;top:" + (8 + y * 0.142) + "%;transform:translate(-50%,-50%)"
-            + (hot || on ? " scale(1.06)" : "") + ";display:flex;align-items:center;gap:8px;cursor:pointer;"
-            + "padding:" + (isPred ? "3px 9px" : "8px 14px") + ";border-radius:var(--r-sm,9px);white-space:nowrap;"
-            + "transition:transform .24s var(--ease),border-color .2s var(--ease),background .2s var(--ease);"
-            + (isPred
-              ? "background:var(--surface-2);border:1px dashed " + (on ? "var(--accent-line)" : "var(--border)")
-              : on ? "background:var(--surface-2);border:1px solid var(--accent);box-shadow:0 6px 20px var(--accent-faint)"
-                   : "background:var(--overlay);border:1px solid var(--border);backdrop-filter:blur(20px)"),
-          pick: () => this.setState({ontoNode:label}),
-          enter: () => this.setState({ontoHover:label}),
-          leave: () => this.setState(prev => (prev.ontoHover === label ? {ontoHover:null} : null))};
-      }),
-      selectedLabel: ontoSel[0],
-      selectedNote: ontoSel[5],
-      legend: [["Core entity","var(--accent)", ONTO_NODES.filter(n => n[1] === "entity").length],
-        ["Read through the spine","var(--neutral)", ONTO_NODES.filter(n => n[1] === "ledger").length],
-        ["Module entity","#9fd6f0", ONTO_NODES.filter(n => n[1] === "module").length],
-        ["Predicate","var(--track)", ONTO_NODES.filter(n => n[1] === "predicate").length]]
-        .map(l => ({label:l[0], bg:l[1], count:String(l[2])})),
-      layouts: [],
+      schema: {
+        edges: ONTO_EDGES.map(e => {
+          const a = center(e[0]), b = center(e[1]), on = touches(e);
+          return {x1:a[0], y1:a[1], x2:b[0], y2:b[1], mx:(a[0] + b[0]) / 2, my:(a[1] + b[1]) / 2 - 6, label:e[2],
+            stroke: on ? "var(--accent)" : "var(--border-strong)", width: on ? 1.8 : 1, labelColor: on ? "var(--ink)" : "var(--faint)",
+            dash: e[0] === "Payment" ? "4 4" : ""};
+        }),
+        nodes: ONTO_NODES.map(n => {
+          const on = n.id === ontoSel.id, hot = st.ontoHover === n.id;
+          return {id:n.id, tint:n.tint, count:n.count,
+            style: "position:absolute;left:" + (n.x / 10) + "%;top:" + (n.y / 5.4) + "%;min-width:" + (nodeW / 10) + "%;white-space:nowrap;"
+              + "display:flex;align-items:center;gap:8px;padding:9px 11px;border-radius:var(--r-md,12px);cursor:pointer;box-sizing:border-box;"
+              + "transition:transform .22s var(--ease),border-color .2s var(--ease),background .2s var(--ease),box-shadow .2s var(--ease);"
+              + "transform:translate(-50%,-50%)" + (on ? " translateY(-1px)" : "") + ";" + (on ? "background:var(--surface-2);border:1px solid " + n.tint + ";box-shadow:0 8px 24px rgba(0,0,0,.28)"
+                : hot ? "background:var(--surface-2);border:1px solid var(--border-strong)"
+                : "background:var(--surface);border:1px solid var(--border)"),
+            dotStyle: "width:8px;height:8px;flex:none;border-radius:2px;background:" + n.tint,
+            pick: () => this.setState({ontoNode:n.id}),
+            enter: () => this.setState({ontoHover:n.id}),
+            leave: () => this.setState(prev => (prev.ontoHover === n.id ? {ontoHover:null} : null))};
+        }),
+        sel: {id:ontoSel.id, tint:ontoSel.tint, note:ontoSel.note, source:ontoSel.source, count:ontoSel.count,
+          example: exampleOf(ontoSel), facts: ontoSel.facts.map(f => ({k:f[0], v:f[1]})),
+          links: ONTO_EDGES.filter(touches).map(e => ({label: e[0] === ontoSel.id ? e[2] + " → " + e[1] : e[0] + " " + e[2],
+            pick: () => this.setState({ontoNode: e[0] === ontoSel.id ? e[1] : e[0]})})),
+          openLabel: ontoSel.go[0] === "customer" ? "Open customer" : ontoSel.go[0] === "page" ? "Open " + ontoSel.go[1] : ontoSel.go[0] === "docket" ? "Open docket" : ontoSel.go[0] === "change" ? "Open change" : "Open job",
+          open: () => { const g2 = ontoSel.go;
+            if (g2[0] === "customer") demoStore.openCustomer(g2[1]);
+            else if (g2[0] === "job") demoStore.openJob(g2[1]);
+            else if (g2[0] === "docket") demoStore.openDocket(g2[1]);
+            else if (g2[0] === "change") demoStore.openChange();
+            else demoStore.go(g2[1]); }},
+        chain: ["Customer","Quote","Job","Docket","Artwork","Change Request","Production","Payment","Invoice"].map(id => {
+          const n = ONTO_NODES.find(x => x.id === id);
+          return {id, value: exampleOf(n), tint:n.tint, on: id === ontoSel.id, pick: () => this.setState({ontoNode:id})};
+        })
+      },
       ...ontoSearch
     };
 
@@ -2449,6 +2533,37 @@ export default class PulseLogic extends DCLogic {
       })
     };
 
+    /* KPI figures that move with the demo (live jobs, ready to invoice) are
+       read from the store so the band agrees with Jobs and Finance. */
+    const DM = demoMetrics(demoStore.get());
+    const liveKpi = (k) => {
+      const d = KPI_DEFS[k];
+      if (k === "jobs") return Object.assign({}, d, {value:String(DM.liveCount), hint:DM.artwork.length + " artwork · " + DM.production.length + " production"});
+      if (k === "margin") return Object.assign({}, d, {value:fmtEUR(DM.rtiValue), delta:DM.rti.length + " jobs"});
+      return d;
+    };
+    const patchMetrics = (a) => (a.metrics || []).map(m => {
+      if (a.id === "jobs" && m[0] === "Live jobs") return [m[0], String(DM.liveCount)].concat(m.slice(2));
+      if (a.id === "jobs" && m[0] === "Changes pending") return [m[0], String(DM.changesPending), DM.changesPending ? "+1" : "0", DM.changesPending ? "down" : "up",
+        DM.changesPending ? "CR-118 awaiting Sean" : "CR-118 decided", m[5]];
+      if (m[0] === "Completed not invoiced") return [m[0], fmtEUR(DM.rtiValue), DM.rti.length + " jobs"].concat(m.slice(3));
+      return m;
+    });
+    /* Executive view: the four blocks Sean asked for, numbers from the store. */
+    const execModel = {
+      groups: [
+        {title:"Operations", tint:"#6fcfe4", items:[["Jobs this week","52","50+ a week"],["Average turnaround","3.4 days","approved to ready"],
+          ["At-risk work",String(DM.attention.length),DM.attention.map(j => j.id).join(", ") || "none"],["Rework","1.8%","of jobs this month"]]},
+        {title:"Sales", tint:"#9fb4c8", items:[["Quotes issued","64","this week, PrintLogic"],["Quote conversion","58%","approved to job"],
+          ["Online orders",String(DM.onlineCount),fmtEUR(DM.onlineRevenue) + " paid"],["Repeat customers","71%","ordered before"]]},
+        {title:"Finance", tint:"#e7c35a", items:[["Revenue MTD",fmtEUR(DM.finance.revenueMTD),"September"],["Completed not invoiced",fmtEUR(DM.rtiValue),DM.rti.length + " jobs ready"],
+          ["Debtors",fmtEUR(DM.finance.outstanding),"5 accounts"],["Online prepaid",Math.round(100 * P_REV[P_REV.length - 1].online / DM.finance.revenueMTD) + "%","of September revenue"]]}
+      ].map(g => ({title:g.title, dot:"width:8px;height:8px;border-radius:2px;flex:none;background:" + g.tint,
+        items:g.items.map(i => ({label:i[0], value:i[1], hint:i[2]}))})),
+      efficiency: {dupes:String(DM.efficiency.duplicatesAvoided), hours:String(DM.efficiency.hoursSaved), touches:String(DM.efficiency.adminTouchesAvoided),
+        line:"Every approved quote, website order and finished job moved between PrintLogic, Pulse and Big Red Cloud without being typed again.",
+        note:"Demo estimate, this week"}
+    };
     const areaDef = ASPECT_DEFS.find(x => x.id === st.aspect);
     const areaLabel = areaDef ? areaDef.label : st.aspect;
     const chip = (on) => "height:31px;padding:0 14px;border-radius:var(--r-ctl,9px);cursor:pointer;font-size:12.5px;white-space:nowrap;"
@@ -2478,7 +2593,8 @@ export default class PulseLogic extends DCLogic {
       return Object.assign({}, it, imp, {
         expanded, chevron: expanded ? "180deg" : "0deg",
         open: () => this.setState({open: expanded ? null : k}),
-        action: (e) => { if (e) e.stopPropagation(); this.setState({resolved:Object.assign({},st.resolved,{[k]:true}), open:null}); },
+        action: (e) => { if (e) e.stopPropagation(); this.setState({open:null}); goItem(k); },
+        go: () => goItem(k),
         ask: (e) => { if (e) e.stopPropagation(); this.ask(it.title); }
       });
     };
@@ -2487,14 +2603,21 @@ export default class PulseLogic extends DCLogic {
       + (active ? "background:var(--pill-bg);color:var(--pill-ink);font-weight:500;box-shadow:0 2px 5px rgba(0,0,0,.34),0 6px 16px rgba(0,0,0,.22),inset 0 1px 0 rgba(255,255,255,.5);" : "background:none;color:var(--dim)");
 
     const TASKS = [
-      {id:"t1", title:"Chase INV-10428 — Dunne & Sons", due:"09:30", who:"AN", queue:["mine","overdue"], subject:"Dunne & Sons Ltd", priority:"high", late:true},
-      {id:"t2", title:"Reassign Van 04 jobs off Ballincollig", due:"11:00", who:"MK", queue:["mine","overdue"], subject:"Ballincollig depot", priority:"high", late:true},
-      {id:"t3", title:"Approve purchase order PO-4471", due:"12:00", who:"MK", queue:["mine"], subject:"PO-4471", priority:"normal"},
-      {id:"t4", title:"Call Casey Builders about Thursday", due:"14:00", who:"TW", queue:["mine","team"], subject:"Casey Builders", priority:"normal"},
-      {id:"t5", title:"Sign off August counter stocktake", due:"16:30", who:"SB", queue:["team"], subject:"Head office", priority:"low"},
-      {id:"t6", title:"Assign installer to Thursday depot visit", due:"Tomorrow", who:"—", queue:["unassigned","upcoming"], subject:"site-visits.visit", priority:"high"},
-      {id:"t7", title:"VAT return — August", due:"Fri", who:"AN", queue:["team","upcoming"], subject:"Head office", priority:"normal"},
-      {id:"t8", title:"Ballincollig lease decision", due:"Thu", who:"MK", queue:["mine","upcoming"], subject:"Ballincollig depot", priority:"high"}
+      {id:"t1", title:"Approve CR-118 · Byrne & Co card change", due:"Now", who:"SM", queue:["mine","overdue"], subject:"J-10482", priority:"high", late:true},
+      {id:"t2", title:"Chase Dublin Dental Centre for artwork files", due:"11:00", who:"EW", queue:["team","overdue"], subject:"J-10470", priority:"high", late:true},
+      {id:"t3", title:"Send J-10473 invoice to Big Red Cloud", due:"14:00", who:"SM", queue:["mine"], subject:"J-10473", priority:"normal"},
+      {id:"t4", title:"Revise Byrne & Co artwork for 5 names", due:"15:00", who:"SB", queue:["team"], subject:"J-10482", priority:"normal"},
+      {id:"t5", title:"Finish Nova Electrical flyers on Digital Press 1", due:"16:00", who:"ND", queue:["team"], subject:"J-10479", priority:"high"},
+      {id:"t6", title:"Book courier for Corrib Pharmacy leaflets", due:"Tomorrow", who:"—", queue:["unassigned","upcoming"], subject:"J-10477", priority:"normal"},
+      {id:"t7", title:"Send reminder to Castle Events (INV-7738 overdue)", due:"Fri", who:"AK", queue:["team","upcoming"], subject:"INV-7738", priority:"normal"},
+      {id:"t8", title:"Decide J-10488 rush capacity on Large Format", due:"Today", who:"SM", queue:["mine","upcoming"], subject:"J-10488", priority:"high"}
+    ];
+    const HOME_TASKS = [
+      {id:"h1", title:"Approve CR-118 · Byrne & Co change", due:"Now", late:true},
+      {id:"h2", title:"Send J-10473 invoice to Big Red Cloud", due:"Today"},
+      {id:"h3", title:"Decide J-10488 rush capacity", due:"15:00"},
+      {id:"h4", title:"Call Dublin Dental Centre about artwork", due:"16:00"},
+      {id:"h5", title:"Review this week's online orders", due:"Fri"}
     ];
     const decorateTask = (t) => {
       const done = !!st.done[t.id];
@@ -2527,104 +2650,96 @@ export default class PulseLogic extends DCLogic {
     }));
     const queueTasks = (st.queue === "all" ? TASKS : TASKS.filter(t => t.queue.includes(st.queue))).map(decorateTask);
 
+    /* The three decisions waiting on Sean. The change and the invoice are the
+       demo store's own actions, so approving here updates Jobs, Production,
+       Finance, Home and Activity together. */
+    const ds = demoStore.get();
+    const crStatus = ds.changeState === "pending" ? "awaiting you" : ds.changeState === "approved" ? "approved" : "declined";
+    const invStatus = ds.synced.indexOf("J-10473") > -1 ? "approved" : ds.syncing === "J-10473" ? "syncing" : st.approved.inv === "declined" ? "declined" : "awaiting you";
+    const rushStatus = st.approved.rush === true ? "approved" : st.approved.rush === "declined" ? "declined" : "awaiting you";
     const APPROVALS = [
-      {id:"a1", title:"Purchase order PO-4471 — €14,280", subject:"Munster Plumbing Supplies · raised by Aoife Nolan", age:"18m", status:"awaiting you",
-       steps:[{who:"Aoife Nolan",state:"raised 08:54",dot:GREEN},{who:"Martin Kilbride",state:"pending",dot:AMBER}],
-       work:{kind:"table", label:"PURCHASE ORDER", viewLabel:"View order",
-         headline:"PO-4471 · Munster Plumbing Supplies", sub:"Delivery Thursday 18 Sep · terms 30 days",
+      {id:"cr", title:"Change request · J-10482 Byrne & Co", subject:"1,000 → 2,000 units · 2 → 5 names · detected by Change Control from Claire Byrne's email", age:"11:27",
+       status:crStatus, approveLabel:"Approve",
+       steps:[{who:"Change Control",state:"detected 11:25",dot:GREEN},{who:"Emma Walsh",state:"notified 11:26",dot:GREEN},
+              {who:"Sean Murphy",state: crStatus === "awaiting you" ? "pending" : crStatus,dot: crStatus === "awaiting you" ? AMBER : crStatus === "approved" ? GREEN : RED}],
+       work:{kind:"diff", label:"CHANGE REQUEST · " + P_CHANGE.id, viewLabel:"View change",
+         headline:"J-10482 · Byrne & Co Solicitors · Business Cards", sub:"On approval Docket V3 is issued and V2 is marked superseded",
+         diff: P_CHANGE.fields.map(f => [f.k, f.from, f.to]),
+         thinking:[["Read the email","Claire Byrne, 11:24: new solicitors starting, 2,000 cards and three more names"],
+                   ["Matched the job","J-10482, quote Q-2487, Docket V2 current, artwork V2 approved"],
+                   ["Paused the work","Artwork and the Digital Press 1 slot held so nothing prints at 1,000"],
+                   ["Priced the change","Revised quote €475 against €210, needs requote in PrintLogic"]],
+         tools:[["email.read","read"],["dockets.version","write"],["printlogic.quote.revise","external"]],
+         risk:"Artwork and production stay paused until you decide. Printed copies of Docket V2 are flagged through their QR code."},
+       yes: () => demoStore.approveChange(), no: () => demoStore.rejectChange()},
+      {id:"inv", title:"Invoice · J-10473 Summit Property Partners · €1,640", subject:"Ready for Big Red Cloud · completed 13:03 · prepared by Finance Agent from the job record", age:"13:06",
+       status:invStatus, approveLabel:"Approve",
+       steps:[{who:"Jack Brennan",state:"QC passed 13:03",dot:GREEN},{who:"Finance Agent",state:"prepared 13:06",dot:GREEN},
+              {who:"Sean Murphy",state: invStatus === "awaiting you" ? "pending" : invStatus === "approved" ? "synced" : invStatus,dot: invStatus === "approved" ? GREEN : invStatus === "declined" ? RED : AMBER}],
+       work:{kind:"table", label:"INVOICE DRAFT", viewLabel:"View invoice",
+         headline:"J-10473 · Presentation Folders × 500", sub:"Account customer · terms 30 days",
          cols:["Line","Qty","Unit","Total"], align:["left","right","right","right"],
-         rows:[["22mm copper tube — 3m","240","€38.40","€9,216.00"],
-               ["Compression elbow 22mm","400","€4.10","€1,640.00"],
-               ["Solder ring coupler 22mm","600","€2.85","€1,710.00"],
-               ["Flux paste 350g","60","€28.57","€1,714.00"]],
-         totals:[["Net","€14,280.00"],["VAT 23% (reverse charge)","€0.00"],["Payable","€14,280.00"]],
-         thinking:[["Checked stock levels","All four lines are below reorder point"],
-                   ["Matched pricing","Unit prices equal the June supplier agreement"],
-                   ["Checked commitments","Three lines are committed to Thursday's jobs"],
-                   ["Checked threshold","€4,280 over Martin's sign-off limit, so it routed here"]],
-         tools:[["records.read","read"],["invoices.read","read"],["approvals.route","write"]],
-         risk:"No alternative supplier quote on file. Last price change was 14 June."}},
-      {id:"a2", title:"Credit limit increase — Casey Builders", subject:"€10,000 → €18,000 · raised by Niamh Cronin", age:"Yesterday", status:"awaiting you",
-       steps:[{who:"Niamh Cronin",state:"raised 16:02",dot:GREEN},{who:"Aoife Nolan",state:"approved 16:40",dot:GREEN},{who:"Martin Kilbride",state:"pending",dot:AMBER}],
-       work:{kind:"diff", label:"RECORD CHANGE", viewLabel:"View change",
-         headline:"Casey Builders Ltd · account CB-0142", sub:"Three fields change on approval, one unchanged",
-         diff:[["Credit limit","€10,000","€18,000"],["Terms","30 days","45 days"],["Risk band","B","B"],["Reviewed","14 Mar 2026","Today"]],
-         thinking:[["Read payment history","24 invoices, 22 paid on time, average 27 days"],
-                   ["Checked exposure","Current balance €7,400 — 74% of the existing limit"],
-                   ["Checked open work","€21k of quoted work would be blocked by the current limit"],
-                   ["Checked policy","Increases above €15,000 need your decision"]],
-         tools:[["records.read","read"],["invoices.read","read"],["records.update","write"]],
-         risk:"One late payment in February, 19 days over. Cleared in full."}},
-      {id:"a4", title:"Proposal — Ballincollig retrofit €62,400", subject:"Drafted by Helios · raised by Niamh Cronin", age:"3h", status:"awaiting you",
-       steps:[{who:"Niamh Cronin",state:"raised 06:10",dot:GREEN},{who:"Martin Kilbride",state:"pending",dot:AMBER}],
-       work:{kind:"doc", label:"PROPOSAL · 4 PAGES", viewLabel:"Read proposal",
-         headline:"Heating retrofit — Ballincollig depot", sub:"Prepared for Casey Builders Ltd · valid 30 days",
-         doc:[["Scope","Replace the depot's two oil boilers with a cascaded air-source system, re-balance the existing circuit and fit weather compensation controls. Work is phased over two weekends so the yard keeps running."],
-              ["Approach","Week one strips the plant room and lands the new units on the existing plinth. Week two commissions the cascade and hands over with a 12-month monitoring window."],
-              ["Commercials","€62,400 fixed price, 30% on order, 40% on plant delivery, 30% on handover. Excludes making good to the render."],
-              ["Why us","We hold the maintenance contract on the Glanmire site and carry the same plant in stock, so lead time is three weeks rather than nine."]],
-         totals:[["Plant","€38,900.00"],["Labour","€18,100.00"],["Controls and commissioning","€5,400.00"],["Total","€62,400.00"]],
-         thinking:[["Pulled the site record","Two oil boilers, 2009, last serviced March"],
-                   ["Priced from live stock","Plant is in stock at the Cork branch"],
-                   ["Reused past wording","Lifted scope language from the Glanmire proposal you approved"],
-                   ["Left a gap","No allowance for asbestos survey — flagged below"]],
-         tools:[["records.read","read"],["files.read","read"],["email.send","external"]],
-         risk:"No asbestos survey allowance. If the plant room needs one, add roughly €1,200."}},
-      {id:"a5", title:"Payment run — 14 suppliers €48,920", subject:"Scheduled by Cash Watch · Friday 19 Sep", age:"1h", status:"awaiting you",
-       steps:[{who:"Cash Watch",state:"proposed 09:40",dot:GREEN},{who:"Martin Kilbride",state:"pending",dot:AMBER}],
-       work:{kind:"table", label:"PAYMENT RUN", viewLabel:"View run",
-         headline:"Run PR-0238 · 14 payments", sub:"Leaves the AIB current account on Friday 19 Sep",
-         cols:["Supplier","Due","Invoices","Amount"], align:["left","left","right","right"],
-         rows:[["Munster Plumbing Supplies","19 Sep","3","€18,240.00"],
-               ["Tyrrell Insulation","19 Sep","1","€9,110.00"],
-               ["Kelleher Haulage","20 Sep","4","€7,480.00"],
-               ["Cork Electrical Wholesale","19 Sep","2","€6,300.00"],
-               ["10 others","19–24 Sep","11","€7,790.00"]],
-         totals:[["Run total","€48,920.00"],["Account balance after","€61,380.00"],["Held back","€2,410.00"]],
-         thinking:[["Read the ledger","31 invoices due inside seven days"],
-                   ["Held two back","Tyrrell credit note unresolved, Dineen job in dispute"],
-                   ["Checked the balance","Run leaves €61,380, above your €50k floor"],
-                   ["Checked mandates","All 14 have current SEPA mandates on file"]],
-         tools:[["invoices.read","read"],["payments.read","read"],["bank.payment.create","external"]],
-         risk:"Two invoices held back total €2,410. They will age past 60 days if not paid next run."}},
-      {id:"a3", title:"Write-off — INV-10233 €412", subject:"Glanmire Mechanical · raised by Aoife Nolan", age:"2 days", status:"approved",
-       steps:[{who:"Aoife Nolan",state:"raised",dot:GREEN},{who:"Martin Kilbride",state:"approved",dot:GREEN}],
-       work:{kind:"diff", label:"WRITE-OFF", viewLabel:"View write-off",
-         headline:"INV-10233 · Glanmire Mechanical", sub:"Two fields change on approval",
-         diff:[["Status","Past due 94 days","Written off"],["Balance","€412.00","€0.00"]],
-         thinking:[["Checked the age","94 days past due, three chases sent"],
-                   ["Checked the account","Company dissolved 12 August"],
-                   ["Checked the amount","Below your €500 write-off threshold"]],
-         tools:[["invoices.read","read"],["invoices.update","write"]],
-         risk:"None. The counterparty no longer exists."}}
+         rows:[["Presentation folders, A4, 400gsm silk","500","€2.62","€1,310.00"],
+               ["Soft-touch laminate and spot UV","500","€0.46","€230.00"],
+               ["Die cutting and van delivery","1","€100.00","€100.00"]],
+         totals:[["VAT","added in Big Red Cloud"],["Net to invoice","€1,640.00"]],
+         thinking:[["Read the docket","All five stages signed off, QC by Jack Brennan"],
+                   ["Priced from the quote","Q-2473 lines carried across, nothing retyped"],
+                   ["Checked the customer","Summit Property Partners, account, nothing outstanding"],
+                   ["Checked the ledger","No invoice for J-10473 in Big Red Cloud yet"]],
+         tools:[["jobs.read","read"],["invoice.prepare","write"],["bigredcloud.invoice.create","external"]],
+         risk:"None found. Big Red Cloud stays the ledger: Pulse sends the invoice data, it does not keep the books."},
+       yes: () => demoStore.sendInvoice("J-10473"),
+       no: () => this.setState(prev => ({approved: Object.assign({}, prev.approved, {inv:"declined"})}))},
+      {id:"rush", title:"Rush job · J-10488 Castle Events", subject:"Requested turnaround tomorrow 10:00 · 150 A2 posters on Large Format", age:"10:48",
+       status:rushStatus, approveLabel:"Approve Capacity",
+       steps:[{who:"Emma Walsh",state:"logged 10:46",dot:GREEN},{who:"Production Agent",state:"slot found 10:48",dot:GREEN},
+              {who:"Sean Murphy",state: rushStatus === "awaiting you" ? "pending" : rushStatus,dot: rushStatus === "approved" ? GREEN : rushStatus === "declined" ? RED : AMBER}],
+       work:{kind:"table", label:"CAPACITY CHECK", viewLabel:"View capacity",
+         headline:"Large Format · ready before 10:00 tomorrow", sub:"Production Agent proposal · Large Format 15:00 to 17:45 today",
+         cols:["Resource","Today","Tomorrow AM","Needed"], align:["left","left","left","right"],
+         rows:[["Large Format","J-10488 · 15:00 to 17:45","Free","2h 45m"],
+               ["Finishing","J-10477 until 17:00","Free from 08:00","20m"],
+               ["Jack Brennan","Dispatch until 12:00","Collection 09:30","15m"]],
+         totals:[["Other jobs moved","None"],["Job value","€610.00"]],
+         thinking:[["Checked the schedule","Large Format is free from 15:00 today"],
+                   ["Checked the artwork","Castle Events artwork approved this morning"],
+                   ["Checked stock","200gsm satin poster on the shelf for 150 A2"],
+                   ["Checked the account","Castle Events has €1,395 overdue on INV-7738"]],
+         tools:[["schedule.read","read"],["schedule.book","write"],["email.send","external"]],
+         risk:"Castle Events has €1,395 overdue. Worth raising when Emma confirms the 10:00 collection."},
+       yes: () => { this.setState(prev => ({approved: Object.assign({}, prev.approved, {rush:true})}));
+         demoStore.log({kind:"person", who:"Sean Murphy", text:"Sean approved rush capacity for J-10488: Large Format 15:00, ready 10:00 tomorrow.", jobId:"J-10488"});
+         demoStore.toast("Capacity approved · J-10488 booked on Large Format 15:00 · ready 10:00 tomorrow"); },
+       no: () => this.setState(prev => ({approved: Object.assign({}, prev.approved, {rush:"declined"})}))}
     ];
-    const bucketOf = (a) => a.status === "approved" ? "Decided"
-      : a.steps.some(s => s.state === "pending" && s.who === "Martin Kilbride") ? "Awaiting you" : "Awaiting others";
+    const bucketOf = (a) => a.status === "awaiting you" ? "Awaiting you" : "Decided";
     const APPROVAL_COUNTS = {"Awaiting you":0, "Awaiting others":0, "Decided":0};
-    APPROVALS.filter(a => !st.approved[a.id]).forEach(a => { APPROVAL_COUNTS[bucketOf(a)] += 1; });
+    APPROVALS.forEach(a => { APPROVAL_COUNTS[bucketOf(a)] += 1; });
     const approvalView = st.workViews.approvals || "Awaiting you";
     const pendingApprovals = APPROVAL_COUNTS["Awaiting you"];
-    const approvalRows = APPROVALS.filter(a => !st.approved[a.id] && bucketOf(a) === approvalView).map(a => Object.assign({}, a, {
-      statusStyle: "padding:3px 10px;border-radius:var(--r-sm,9px);font-size:11px;"
-        + (a.status === "approved" ? "background:var(--ok-soft);color:" + GREEN : "background:var(--warn-soft);color:" + AMBER),
-      pending: a.status !== "approved",
+    const apprTint = (s) => s === "approved" ? [GREEN, "var(--ok-soft)"] : s === "declined" ? [RED, "var(--bad-soft)"] : s === "syncing" ? ["var(--accent)", "var(--accent-faint)"] : [AMBER, "var(--warn-soft)"];
+    const approvalRows = APPROVALS.filter(a => bucketOf(a) === approvalView).map(a => Object.assign({}, a, {
+      status: a.id === "inv" && a.status === "approved" ? "synced to Big Red Cloud" : a.id === "inv" && a.status === "syncing" ? "sending to Big Red Cloud" : a.status,
+      statusStyle: "padding:3px 10px;border-radius:var(--r-sm,9px);font-size:11px;background:" + apprTint(a.status)[1] + ";color:" + apprTint(a.status)[0],
+      pending: a.status === "awaiting you",
       viewLabel: a.work.viewLabel,
       openWork: () => this.setState({workDoc:a.id, workDocTab:"work"}),
-      approve: () => this.setState(prev => ({approved: Object.assign({}, prev.approved, {[a.id]:true})}))
+      approve: a.yes, decline: a.no
     }));
     const WORK_COUNTS = {
       tasks: st.addedTasks.concat(WORK_TASKS).filter(t => !(st.done[t.id] !== undefined ? st.done[t.id] : t.done)).length,
-      approvals: APPROVALS.filter(a => !st.approved[a.id] && bucketOf(a) === "Awaiting you").length,
+      approvals: pendingApprovals,
       workflows: OPS_DEFS.filter(w => w.kind !== "task" && (st.opsOff[w.id] === undefined ? w.on : !st.opsOff[w.id])).length,
       schedules: OPS_DEFS.filter(w => w.triggerKind === "schedule").length
     };
-    const approvals = APPROVALS.filter(a => !st.approved[a.id] && bucketOf(a) === st.approvalFilter).map(a => Object.assign({}, a, {
-      pending: a.status !== "approved",
-      statusBg: a.status === "approved" ? "var(--ok-soft)" : "var(--warn-soft)",
-      statusColor: a.status === "approved" ? GREEN : AMBER,
+    const approvals = APPROVALS.filter(a => bucketOf(a) === (st.approvalFilter === "Awaiting others" ? "Awaiting you" : st.approvalFilter)).map(a => Object.assign({}, a, {
+      pending: a.status === "awaiting you",
+      statusBg: apprTint(a.status)[1],
+      statusColor: apprTint(a.status)[0],
       viewLabel: a.work.viewLabel,
       openWork: () => this.setState({workDoc:a.id, workDocTab:"work"}),
-      approve: () => this.setState({approved:Object.assign({}, st.approved, {[a.id]:true})})
+      approve: a.yes
     }));
 
     /* An approval is a decision about a piece of work, so the work itself has
@@ -2670,14 +2785,16 @@ export default class PulseLogic extends DCLogic {
         effectStyle: "display:flex;align-items:center;gap:7px;height:26px;padding:0 11px;border-radius:var(--r-sm,9px);font-size:11px;"
           + (effects.length ? "background:var(--warn-soft);color:" + AMBER : "background:var(--ok-soft);color:" + GREEN),
         /* Decided approvals describe what happened, not what will. */
-        sub: (wDoc.status === "approved" || st.approved[wDoc.id])
-          ? w.sub.replace(" change on approval", " changed on approval").replace("On approval", "Applied")
+        sub: wDoc.status !== "awaiting you"
+          ? w.sub.replace("On approval ", "Applied: ")
           : w.sub,
         risk:w.risk, age:wDoc.age,
-        pending: wDoc.status !== "approved" && !st.approved[wDoc.id],
-        decided: wDoc.status === "approved" || st.approved[wDoc.id] === true,
+        pending: wDoc.status === "awaiting you",
+        decided: wDoc.status !== "awaiting you",
+        approveLabel: wDoc.approveLabel,
         close: () => this.setState({workDoc:null}),
-        approve: () => this.setState(prev => ({approved: Object.assign({}, prev.approved, {[wDoc.id]:true}), workDoc:null})),
+        approve: () => { wDoc.yes(); this.setState({workDoc:null}); },
+        decline: () => { wDoc.no(); this.setState({workDoc:null}); },
         tabs: tabDef.map(t => ({
           label:t[1],
           style: "height:28px;padding:0 13px;border:0;border-radius:var(--r-ctl,9px);font-size:12.5px;cursor:pointer;transition:background .2s var(--ease),color .2s var(--ease);"
@@ -2697,7 +2814,7 @@ export default class PulseLogic extends DCLogic {
           style: "border-top:1px solid var(--border)" + (ri % 2 ? ";background:var(--surface-faint)" : "")
         })),
         hasTotals: (w.totals || []).length > 0,
-        footer: wDoc.status === "approved" || st.approved[wDoc.id]
+        footer: wDoc.status !== "awaiting you"
           ? "Decided. The trail is written against your name."
           : "Nothing has run yet. Approving fires " + (w.tools.filter(t => t[1] !== "read").map(t => t[0]).join(" and ") || "no effects") + ".",
         totals: (w.totals || []).map((t, i, arr) => ({label:t[0], value:t[1],
@@ -2762,17 +2879,17 @@ export default class PulseLogic extends DCLogic {
          cardBg:"var(--surface)", cardBorder:"var(--track)", ink:INK, bars:bars([.4,.5,.44,.6,.5,.55,.48,.6,.5,.45], AMBER)}
        ],
        breakdown:[
-        {key:"Head office", value:money(214600), pct:"72%", color:LIME},
-        {key:"Ballincollig depot", value:money(156800), pct:"53%", color:"var(--track)"},
-        {key:"Mallow yard", value:money(41400), pct:"18%", color:"var(--track)"}
+        {key:"Account customers", value:money(32950), pct:"72%", color:LIME},
+        {key:"Online orders", value:money(15670), pct:"53%", color:"var(--track)"},
+        {key:"Counter (Clover)", value:money(2140), pct:"18%", color:"var(--track)"}
        ]},
-      {title:"site-visits", description:"Contributed by an installed module.", hasBreakdown:false,
+      {title:"online-orders", description:"Contributed by an installed module.", hasBreakdown:false,
        metrics:[
-        {label:"Visits completed", value:String(Math.round(38*scale)), change:"+11%", changeColor:delta("up"), hint:"vs previous "+rangeLabel,
+        {label:"Online orders", value:String(Math.round(38*scale)), change:"+11%", changeColor:delta("up"), hint:"vs previous "+rangeLabel,
          cardBg:"var(--surface)", cardBorder:"var(--track)", ink:INK, bars:bars([.4,.5,.6,.5,.66,.6,.72,.66,.8,.9], LIME)},
-        {label:"Unassigned", value:"1", change:"—", changeColor:delta("flat"), hint:"Thursday 09:00",
+        {label:"Unassigned", value:"1", change:"—", changeColor:delta("flat"), hint:"O-8047 artwork check",
          cardBg:"var(--surface)", cardBorder:"var(--warn-soft)", ink:INK, bars:bars([.2,.3,.2,.4,.3,.25,.2,.3,.25,.4], AMBER)},
-        {label:"Average duration", value:"1h 48m", change:"−6m", changeColor:delta("up"), hint:"across completed visits",
+        {label:"Average order", value:"€420", change:"−6m", changeColor:delta("up"), hint:"all prepaid via Stripe",
          cardBg:"var(--surface)", cardBorder:"var(--track)", ink:INK, bars:bars([.6,.55,.6,.5,.55,.48,.5,.46,.44,.4], LIME)},
         {label:"Cancelled", value:String(Math.round(3*scale)), change:"+1", changeColor:delta("flat"), hint:"client-side",
          cardBg:"var(--surface)", cardBorder:"var(--track)", ink:INK, bars:bars([.2,.24,.2,.3,.26,.34,.3,.4,.36,.5], AMBER)}
@@ -2786,18 +2903,18 @@ export default class PulseLogic extends DCLogic {
        trigger:"schedule · daily 08:00", actions:[{label:"notify.email", border:"var(--bad-soft)", color:AMBER},{label:"tasks.create", border:"var(--track)", color:BODY}],
        lastRun:"Today 08:00", result:"6 of 10 sent · partial", resultColor:AMBER, hasRuns:true, runSummary:"11 ok · 3 partial",
        runs:runs(["ok","ok","partial","ok","ok","ok","partial","ok","ok","ok","ok","ok","partial","partial"])},
-      {name:"Approval routing over €10k", state:"live", stateBg:"var(--ok-soft)", stateColor:GREEN,
-       trigger:"event · core.approval.created", actions:[{label:"approvals.route", border:"var(--track)", color:BODY},{label:"notify.inbox", border:"var(--track)", color:BODY}],
+      {name:"Change request routing", state:"live", stateBg:"var(--ok-soft)", stateColor:GREEN,
+       trigger:"event · email.change.detected", actions:[{label:"approvals.route", border:"var(--track)", color:BODY},{label:"notify.inbox", border:"var(--track)", color:BODY}],
        lastRun:"Today 08:54", result:"ok", resultColor:GREEN, hasRuns:true, runSummary:"14 ok",
        runs:runs(["ok","ok","ok","ok","ok","ok","ok","ok","ok","ok","ok","ok","ok","ok"])},
-      {name:"Unassigned visit escalation", state:"live", stateBg:"var(--ok-soft)", stateColor:GREEN,
-       trigger:"event · site-visits.visit.created", actions:[{label:"notify.inbox", border:"var(--track)", color:BODY}],
+      {name:"Late artwork escalation", state:"live", stateBg:"var(--ok-soft)", stateColor:GREEN,
+       trigger:"event · job.artwork.overdue", actions:[{label:"notify.inbox", border:"var(--track)", color:BODY}],
        lastRun:"Today 07:00", result:"ok", resultColor:GREEN, hasRuns:true, runSummary:"9 ok · 1 failed",
        runs:runs(["idle","idle","ok","ok","failed","ok","ok","ok","idle","ok","ok","ok","ok","ok"])},
-      {name:"Xero invoice sync", state:"failing", stateBg:"var(--bad-soft)", stateColor:RED,
-       trigger:"schedule · hourly", actions:[{label:"xero.post", border:"var(--bad-soft)", color:RED}],
-       lastRun:"Today 02:14", result:"invalid_grant · dead-lettered", resultColor:RED, hasRuns:true, runSummary:"4 failed",
-       runs:runs(["ok","ok","ok","ok","ok","ok","ok","ok","ok","ok","failed","failed","failed","failed"])}
+      {name:"Big Red Cloud invoice sync", state:"live", stateBg:"var(--ok-soft)", stateColor:GREEN,
+       trigger:"schedule · hourly", actions:[{label:"bigredcloud.invoice.post", border:"var(--track)", color:BODY}],
+       lastRun:"Today 02:14", result:"ok", resultColor:GREEN, hasRuns:true, runSummary:"14 ok",
+       runs:runs(["ok","ok","ok","ok","ok","ok","ok","ok","ok","ok","ok","ok","ok","ok"])}
     ];
 
     const health = [
@@ -2807,13 +2924,13 @@ export default class PulseLogic extends DCLogic {
       {label:"Failed deliveries", value:"5", hint:"across 2 subscribers", color:AMBER, border:"var(--warn-soft)"}
     ];
     const failures = [
-      {name:"Xero invoice sync", status:"failed", error:"invalid_grant: refresh token expired", at:"02:14", tagBg:"var(--bad-soft)", tagColor:RED},
+      {name:"PrintLogic quote import", status:"failed", error:"timeout fetching Q-2489, retried OK at 07:12", at:"07:10", tagBg:"var(--bad-soft)", tagColor:RED},
       {name:"Overdue invoice reminder", status:"partial", error:"notify.email: 4 records missing billing_email", at:"08:00", tagBg:"var(--warn-soft)", tagColor:AMBER},
-      {name:"Unassigned visit escalation", status:"failed", error:"notify.inbox: actor has no grant for core:notification:create", at:"Mon", tagBg:"var(--bad-soft)", tagColor:RED}
+      {name:"Late artwork escalation", status:"failed", error:"notify.inbox: actor has no grant for core:notification:create", at:"Mon", tagBg:"var(--bad-soft)", tagColor:RED}
     ];
     const calls = [
-      {tool:"xero.invoices.post", status:"failed", ms:"1,204 ms", at:"02:14", tagBg:"var(--bad-soft)", tagColor:RED},
-      {tool:"whatsapp.messages.send", status:"ok", ms:"412 ms", at:"07:02", tagBg:"var(--ok-soft)", tagColor:GREEN},
+      {tool:"printlogic.quotes.get", status:"failed", ms:"1,204 ms", at:"02:14", tagBg:"var(--bad-soft)", tagColor:RED},
+      {tool:"stripe.payments.get", status:"ok", ms:"412 ms", at:"07:02", tagBg:"var(--ok-soft)", tagColor:GREEN},
       {tool:"resend.email.send", status:"ok", ms:"286 ms", at:"08:00", tagBg:"var(--ok-soft)", tagColor:GREEN},
       {tool:"resend.email.send", status:"failed", ms:"94 ms", at:"08:00", tagBg:"var(--bad-soft)", tagColor:RED},
       {tool:"anthropic.messages", status:"ok", ms:"2,940 ms", at:"09:11", tagBg:"var(--ok-soft)", tagColor:GREEN}
@@ -2824,9 +2941,9 @@ export default class PulseLogic extends DCLogic {
        stateBg:"var(--track)", stateColor:BODY,
        description:"People, organisations, locations, teams and the relationships between them — registered through the same contract a module uses.",
        contributions:[{n:"31",k:"routes"},{n:"10",k:"nav items"},{n:"21",k:"events"},{n:"7",k:"predicates"},{n:"64",k:"permissions"}]},
-      {label:"Site visits", id:"site-visits", version:"1.0.0", state:"installed", bg:"var(--accent-faint)", border:"var(--accent-line)",
+      {label:"Print jobs", id:"print-jobs", version:"1.0.0", state:"installed", bg:"var(--accent-faint)", border:"var(--accent-line)",
        stateBg:"var(--accent-soft)", stateColor:LIME,
-       description:"The fixture that proves the architecture holds: an entity with a real table, a predicate, two Helios tools, a metric, an event, a trigger, a page and a nav item. Not one line of core changes to install it.",
+       description:"Jobs, dockets, change requests and production stages for Murphy Print, installed as one module over Pulse core.",
        contributions:[{n:"1",k:"entity"},{n:"2",k:"helios tools"},{n:"4",k:"metrics"},{n:"1",k:"predicate"},{n:"1",k:"trigger"}]},
       {label:"UI showcase", id:"ui-showcase", version:"0.1.0", state:"installed", bg:"var(--surface)", border:"var(--track)",
        stateBg:"var(--accent-soft)", stateColor:LIME,
@@ -2834,20 +2951,24 @@ export default class PulseLogic extends DCLogic {
        contributions:[{n:"3",k:"pages"},{n:"1",k:"widget"},{n:"0",k:"tables"}]},
       {label:"Wholesale", id:"wholesale", version:"—", state:"available", bg:"var(--surface-faint)", border:"var(--track)",
        stateBg:"var(--track)", stateColor:FAINT,
-       description:"Orders, price lists, stock and purchase orders. One line in this client's config would add its pages, permissions, events and Helios tools.",
+       description:"Orders, price lists, stock and purchase orders. One line in this client's config would add its pages, permissions, events and Pulse tools.",
        contributions:[{n:"6",k:"entities"},{n:"9",k:"helios tools"},{n:"12",k:"events"}]}
     ];
 
     const notificationFeed = [
-      {dot:LIME, text:"Aoife Nolan assigned you “Approve purchase order PO-4471”", event:"core.approval.created", channel:"Inbox", meta:"18m"},
-      {dot:RED, text:"Xero invoice sync failed — refresh token expired", event:"core.automation.failed", channel:"Inbox · WhatsApp", meta:"6h"},
-      {dot:AMBER, text:"Helios flagged a change in Dunne & Sons payment behaviour", event:"core.notification.created", channel:"Inbox", meta:"2h"},
-      {dot:AMBER, text:"Thursday's depot visit is still unassigned", event:"site-visits.visit.created", channel:"Inbox", meta:"2h"},
-      {dot:NEUTRAL, text:"Séamus Byrne mentioned you on “Reassign Van 04 jobs”", event:"core.comment.created", channel:"Inbox", meta:"Yesterday"},
-      {dot:NEUTRAL, text:"Your daily briefing is ready", event:"core.briefing.sent", channel:"WhatsApp", meta:"07:00"}
+      demoS.changeState === "pending"
+        ? {dot:"#e07aa8", text:"Change Control: Byrne & Co changed J-10482 to 2,000 cards, 5 names. Approval needed.", event:"CR-118 · Email", channel:"Inbox", meta:"11:27"}
+        : {dot:GREEN, text:"CR-118 " + demoS.changeState + ". Docket " + (demoS.changeState === "approved" ? "V3 is now current on J-10482." : "V2 stays current on J-10482."), event:"CR-118 · Pulse", channel:"Inbox", meta:"now"},
+      {dot:AMBER, text:"Ops Watchdog: J-10470 Dublin Dental Centre still waiting on artwork (2 days).", event:"J-10470 · Deadline risk", channel:"Inbox", meta:"10:31"},
+      demoS.synced.includes("J-10473")
+        ? {dot:GREEN, text:"Big Red Cloud invoice sync completed for J-10473 (€1,640).", event:"J-10473 · Big Red Cloud", channel:"Inbox", meta:"now"}
+        : {dot:"#e7c35a", text:"Finance Agent: J-10473 Summit Property Partners, €1,640 ready to invoice.", event:"J-10473 · Finance", channel:"Inbox", meta:"13:06"},
+      {dot:LIME, text:"Stripe received €428 from Greenline Café. Order O-8046 created J-10486.", event:"O-8046 · Stripe", channel:"Inbox", meta:"12:15"},
+      {dot:NEUTRAL, text:"Castle Events asked for J-10488 by tomorrow 10:00. Capacity needs your approval.", event:"J-10488 · Rush", channel:"Inbox", meta:"09:40"},
+      {dot:NEUTRAL, text:"Your morning brief is ready.", event:"Briefing", channel:"Home", meta:"07:30"}
     ];
 
-    const FEATURES = [["approvals","Approvals"],["automations","Automations"],["insights","Insights"],["customEntities","Custom entities"],["whatsapp","WhatsApp channel"],["composio","Composio actions"]];
+    const FEATURES = [["approvals","Approvals"],["automations","Automations"],["insights","Insights"],["customEntities","Custom entities"],["whatsapp","SMS job updates"],["composio","Composio actions"]];
     const features = FEATURES.map(f => {
       const on = st.flags[f[0]];
 
@@ -2874,33 +2995,37 @@ export default class PulseLogic extends DCLogic {
       recents.length ? {group:"Recent", scope:"All", items:recents.slice(0, 3).map(r => ({title:r, meta:"Recent search", hint:"AGAIN", glyph:"recent",
         go: () => this.setState({query:r, palSel:0})}))} : null,
       {group:"Actions", scope:"Actions", items:[
-        {title:"Start a new Helios conversation", meta:"Clears the current thread", hint:"ACTION", glyph:"action",
+        {title:"Start a new Pulse conversation", meta:"Clears the current thread", hint:"ACTION", glyph:"action",
           go: () => { clearInterval(this._t); this.setState({page:"Home", thread:[], typed:0, draft:""}); }},
+        {title:"Review change CR-118", meta:"Byrne & Co · J-10482 · 1,000 → 2,000 cards", hint:"ACTION", glyph:"action",
+          go: () => demoStore.openChange()},
+        {title:"Ready to invoice", meta:"Finance · send to Big Red Cloud", hint:"ACTION", glyph:"action",
+          go: () => demoStore.go("Finance", "ready")},
         {title:"Review approvals waiting on you", meta:"Work · approvals", hint:"ACTION", glyph:"action",
-          go: () => this.setState({page:"Work", queue:"mine"})},
+          go: () => this.setState({page:"Work", workSection:"approvals"})},
         {title:themeAction, meta:"Appearance", hint:"ACTION", glyph:"action",
-          go: () => this.setState(p => p.theme === "light" ? {theme: p.darkTheme || this.props.theme || "harbour"} : {theme:"light", darkTheme:p.theme})},
-        {title:"Open system health", meta:"Admin · modules and jobs", hint:"ACTION", glyph:"action",
-          go: () => this.setState({page:"Settings"})}
+          go: () => this.setState(p => p.theme === "light" ? {theme: p.darkTheme || this.props.theme || "harbour"} : {theme:"light", darkTheme:p.theme})}
       ]},
-      {group:"Agents", scope:"Agents", items:st.agents.slice(0, 4).map(a => ({title:a.name, meta:a.role, hint:a.group ? "GROUP" : "AGENT", glyph:"agent",
+      {group:"Jobs", scope:"Jobs", items:demoS.jobs.map(j => ({title:j.id + " · " + j.customer, meta:j.product + " · " + j.qty.toLocaleString("en-IE") + " · " + j.stage + " · due " + j.due, hint:"JOB", glyph:"task",
+        go: () => demoStore.openJob(j.id)}))
+        .concat(Object.keys(demoS.dockets).map(jid => {
+          const cur = demoS.dockets[jid].find(d => d.status === "Current") || demoS.dockets[jid][demoS.dockets[jid].length - 1];
+          return {title:"Docket " + jid + " V" + cur.v, meta:"Current docket · " + cur.reason, hint:"DOCKET", glyph:"page",
+            go: () => demoStore.openDocket(jid)};
+        }))},
+      {group:"Customers", scope:"Customers", items:demoS.jobs.filter((j, i, a) => a.findIndex(x => x.customerId === j.customerId) === i)
+        .map(j => ({title:j.customer, meta:j.contact + " · " + demoS.jobs.filter(x => x.customerId === j.customerId).length + " live job", hint:"CUSTOMER", glyph:"org",
+          go: () => demoStore.openCustomer(j.customerId)}))},
+      {group:"Agents", scope:"Agents", items:st.agents.map(a => ({title:a.name, meta:a.role, hint:"AGENT", glyph:"agent",
         go: () => this.setState({page:"Agents", agentId:a.id})}))},
-      {group:"Work", scope:"Work", items:TASKS.slice(0, 4).map(t => ({title:t.title, meta:t.subject + " · due " + t.due, hint:"TASK", glyph:"task",
-        go: () => this.setState({page:"Work", queue:"mine"})}))},
-      {group:"Records", scope:"Records", items:PEOPLE.slice(0, 3).map(p => ({title:p[0], meta:p[1] + " · " + p[3], hint:"PERSON", glyph:"person",
-        go: () => this.setState({page:"Records", record:"person"})}))
-        .concat(ORGS.slice(0, 3).map(o => ({title:o[0], meta:o[1] + " · " + o[2] + " outstanding", hint:"ORG", glyph:"org",
-        go: () => this.setState({page:"Records", record:"org"})})))},
-      {group:"Pages", scope:"Pages", items:ASPECT_DEFS.slice(0, 3).map(a => ({title:a.label, meta:a.description, hint:"AREA", glyph:"page",
-        go: () => this.goPage("Dashboard", {aspect:a.id})}))
-        .concat([{title:"Roles and grants", meta:"Who can see and do what", hint:"CONFIG", glyph:"page",
-        go: () => this.setState({page:"Settings"})}])}
+      {group:"Pages", scope:"Pages", items:["Jobs","Production","Online Orders","Customers","Finance","Activity","Dashboard","Work","Records"].map(pg => ({title:pg, meta:"Go to " + pg, hint:"PAGE", glyph:"page",
+        go: () => this.go(pg)}))}
     ].filter(Boolean);
 
     const match = g => g.items.filter(i => !ql || (i.title + " " + i.meta).toLowerCase().includes(ql));
     const scopeCounts = {All:0};
     SEARCH.forEach(g => { const n = match(g).length; scopeCounts.All += n; if (g.scope !== "All") scopeCounts[g.scope] = (scopeCounts[g.scope] || 0) + n; });
-    const palScopes = ["All","Actions","Agents","Work","Records","Pages"].map(name => {
+    const palScopes = ["All","Actions","Jobs","Customers","Agents","Pages"].map(name => {
       const on = scope === name;
       return {label:name, count:scopeCounts[name] || 0,
         style:"flex:none;display:flex;align-items:center;gap:6px;height:26px;padding:0 11px;border-radius:var(--r-ctl,9px);cursor:pointer;font-size:12px;transition:background .2s var(--ease),color .2s var(--ease),border-color .2s var(--ease);"
@@ -2952,12 +3077,13 @@ export default class PulseLogic extends DCLogic {
 
     /* ---- launcher (no query): page kit, frequents, recents, jump-to ---- */
     const jump = (p, extra) => () => {
+      if (DEMO_PAGES.indexOf(p) > -1){ this.setState({paletteOpen:false, query:"", palSel:0}); this.go(p); return; }
       this.setState(Object.assign({page:p, paletteOpen:false, query:"", palSel:0}, extra || {}));
       if (p === "Dashboard") this.startKpiCount();
     };
     const KITS = {
       Home: [
-        {title:"Ask what changed today", meta:"Helios · briefing", icon:ICONS.helios, go: () => { clearInterval(this._t); this.setState({paletteOpen:false, query:"", page:"Home"}); this.ask("What changed today?"); }},
+        {title:"Ask what changed today", meta:"Pulse · briefing", icon:ICONS.helios, go: () => { clearInterval(this._t); this.setState({paletteOpen:false, query:"", page:"Home"}); this.ask("What changed today?"); }},
         {title:"Action inbox", meta:openKeys.length + " waiting on you", icon:ICONS.inbox, go: jump("Home", {open:null})},
         {title:"Edit widgets", meta:"Rearrange the right rail", icon:ICONS.dash, go: jump("Home", {widgetEdit:true})},
         {title:"My work", meta:"Tasks due today", icon:ICONS.work, go: jump("Work", {queue:"mine"})}
@@ -2981,14 +3107,14 @@ export default class PulseLogic extends DCLogic {
         {title:"Edit metrics", meta:"Pick the five on top", icon:ICONS.dash, go: jump("Dashboard", {kpiEdit:true})}
       ],
       Agents: [
-        {title:"Month-end close", meta:"Group of three agents", icon:ICONS.agents, go: jump("Agents", {agentId:"monthend"})},
-        {title:"Credit Control", meta:"Watches payment behaviour", icon:ICONS.agents, go: jump("Agents", {agentId:"credit"})},
+        {title:"Briefing", meta:"This morning's operating brief", icon:ICONS.agents, go: jump("Agents", {agentId:"briefing"})},
+        {title:"Change Control", meta:"CR-118 waiting on you", icon:ICONS.agents, go: jump("Agents", {agentId:"change"})},
         {title:"Build an agent", meta:"Start from a blank brief", icon:ICONS.modules, go: () => this.setState({paletteOpen:false, query:"", page:"Agents", builderOpen:true, builderMode:"new"})},
         {title:"Tools and grants", meta:"What agents may do", icon:ICONS.navAdmin, go: jump("Settings")}
       ],
       Activity: [
-        {title:"Needs attention", meta:"Failures and retries", icon:ICONS.health, go: jump("Activity", {actKpi:"attention"})},
-        {title:"Agent events", meta:"Only what Helios did", icon:ICONS.agents, go: jump("Activity", {actKpi:"ai"})},
+        {title:"Needs attention", meta:"Waiting on a decision", icon:ICONS.health, go: jump("Activity", {actKpi:"attention"})},
+        {title:"Agent events", meta:"Dockets, changes, invoices", icon:ICONS.agents, go: jump("Activity", {actKpi:"ai"})},
         {title:"People events", meta:"Only what the team did", icon:ICONS.people, go: jump("Activity", {actKpi:"people"})},
         {title:"Everything", meta:"Full audit trail", icon:ICONS.navActivity, go: jump("Activity", {actKpi:"all"})}
       ],
@@ -3000,27 +3126,28 @@ export default class PulseLogic extends DCLogic {
       ]
     };
     const palPageRaw = KITS[page] || [
-      {title:"Ask Helios about this page", meta:"It sees what you see", icon:ICONS.helios, go: () => { this.setState({paletteOpen:false, query:"", page:"Home"}); this.ask("What should I know about " + page + "?"); }},
+      {title:"Ask Pulse about this page", meta:"It sees what you see", icon:ICONS.helios, go: () => { this.setState({paletteOpen:false, query:"", page:"Home"}); this.ask("What should I know about " + page + "?"); }},
       {title:"Action inbox", meta:openKeys.length + " waiting on you", icon:ICONS.inbox, go: jump("Home")},
       {title:"My work", meta:"Tasks due today", icon:ICONS.work, go: jump("Work", {queue:"mine"})},
       {title:"Records", meta:"Every record you can see", icon:ICONS.navRecords, go: jump("Records")}
     ];
     const FREQ = [
-      {title:"Action inbox", count:"31×", icon:ICONS.inbox, go: jump("Home")},
-      {title:"Approvals", count:"24×", icon:ICONS.approvals, go: jump("Work", {workSection:"approvals"})},
-      {title:"Overdue invoices", count:"18×", icon:ICONS.insights, go: jump("Dashboard", {aspect:"cash"})},
-      {title:"Dunne & Sons Ltd", count:"12×", icon:ICONS.orgs, go: jump("Records", {recSection:"contacts", record:"org"})},
-      {title:"Month-end close", count:"9×", icon:ICONS.agents, go: jump("Agents", {agentId:"monthend"})},
-      {title:"Site visits", count:"7×", icon:ICONS.visits, go: jump("Work", {workSection:"schedules"})}
+      {title:"J-10482", count:"14×", icon:ICONS.navJobs, go: () => demoStore.openJob("J-10482")},
+      {title:"Byrne & Co Solicitors", count:"11×", icon:ICONS.navCustomers, go: () => demoStore.openCustomer("byrne")},
+      {title:"Production queue", count:"24×", icon:ICONS.navProduction, go: () => demoStore.go("Production", "queue")},
+      {title:"Ready to invoice", count:"18×", icon:ICONS.navFinance, go: () => demoStore.go("Finance", "ready")},
+      {title:"Online orders", count:"9×", icon:ICONS.navOnline, go: () => demoStore.go("Online Orders", "orders")},
+      {title:"Dockets", count:"7×", icon:ICONS.records, go: () => demoStore.go("Jobs", "dockets")}
     ];
     const JUMPS = [
       {title:"Home", icon:ICONS.navHome, go: jump("Home")},
-      {title:"Work", icon:ICONS.navWork, go: jump("Work")},
-      {title:"Records", icon:ICONS.navRecords, go: jump("Records")},
-      {title:"Dashboard", icon:ICONS.navDash, go: jump("Dashboard")},
+      {title:"Jobs", icon:ICONS.navJobs, go: jump("Jobs")},
+      {title:"Production", icon:ICONS.navProduction, go: jump("Production")},
+      {title:"Online Orders", icon:ICONS.navOnline, go: jump("Online Orders")},
+      {title:"Customers", icon:ICONS.navCustomers, go: jump("Customers")},
+      {title:"Finance", icon:ICONS.navFinance, go: jump("Finance")},
       {title:"Agents", icon:ICONS.navAgents, go: jump("Agents")},
-      {title:"Activity", icon:ICONS.navActivity, go: jump("Activity")},
-      {title:"Settings", icon:ICONS.navAdmin, go: jump("Settings")}
+      {title:"Activity", icon:ICONS.navActivity, go: jump("Activity")}
     ];
     const RECENT_WHEN = ["2 min", "18 min", "1 h", "yesterday"];
     const recentRaw = (st.palRecent || []).slice(0, 4);
@@ -3080,7 +3207,7 @@ export default class PulseLogic extends DCLogic {
         st.adminGroup === grp[0],
         () => this.setState({adminGroup: st.adminGroup === grp[0] ? null : grp[0]}),
         String(ADMIN_CARDS.filter(c => c.group === grp[0]).length)));
-      contextHint = "ADMIN · 13 AREAS";
+      contextHint = "ADMIN · " + ADMIN_CARDS.length + " AREAS";
       searchHint = "Search settings";
     } else if (page === "Activity"){
       contextNav = [["all","Everything"],["people","People"],["ai","Agents"],["attention",(st.w - (st.railOpen ? 252 : 68)) < 1000 ? "Attention" : "Needs attention"]]
@@ -3102,12 +3229,21 @@ export default class PulseLogic extends DCLogic {
       contextNav = DEMO_SECTIONS[page].map(sx => seg(sx.label, demoSec === sx.id, () => demoStore.setSection(page, sx.id)));
       contextHint = page.toUpperCase() + " · " + (DEMO_SECTIONS[page].find(sx => sx.id === demoSec) || DEMO_SECTIONS[page][0]).label.toUpperCase();
       searchHint = "Search " + page.toLowerCase();
+    } else if (page === "Activity"){
+      contextNav = [["all","Everything"],["people","People"],["ai","Agents"],["system","System"],["attention","Attention"]]
+        .map(f => seg(f[1], st.actKpi === f[0], () => this.setState({actKpi:f[0], actOpen:null})));
+      contextHint = "ACTIVITY · LIVE";
+      searchHint = "Search events, jobs, people";
+    } else if (page === "Dashboard"){
+      contextNav = ASPECT_DEFS.map(a => seg(a.label, st.aspect === a.id, () => { this.setState({aspect:a.id}); this.startKpiCount(); }));
+      contextHint = "DASHBOARD · " + areaLabel.toUpperCase();
+      searchHint = "Search the dashboard";
     } else if (page === "Home" || page === "Dashboard"){
       contextNav = [
         seg("Home", page === "Home", () => this.go("Home")),
         seg("Dashboard", page === "Dashboard", () => this.go("Dashboard"))
       ];
-      contextHint = page === "Home" ? "HELIOS · " + openKeys.length + " WAITING" : "CRM · " + areaLabel.toUpperCase();
+      contextHint = page === "Home" ? "PULSE · " + openKeys.length + " WAITING" : "CRM · " + areaLabel.toUpperCase();
       searchHint = page === "Dashboard" ? "Search the dashboard" : "Search every record you can see";
     } else if (page === "Agents"){
       contextNav = [];
@@ -3210,19 +3346,22 @@ export default class PulseLogic extends DCLogic {
       removeActivity: () => this.toggleIn("widgets", "activity"),
       removeKpi: () => this.toggleIn("widgets", "kpi"),
       removeVisits: () => this.toggleIn("widgets", "visits"),
-      miniKpis: ["revenue","overdue","jobs","margin"].map(k => {
-        const d = KPI_DEFS[k];
-        return {label:d.label, value:d.value, delta:d.delta, deltaColor: d.dir === "up" ? GREEN : RED};
-      }),
-      visitWidget: [
-        {title:"Boiler service · Casey Builders", when:"Wed 09:00", dot:LIME},
-        {title:"Pre-install survey · Ó Riain", when:"Wed 14:00", dot:LIME},
-        {title:"Depot check · Ballincollig", when:"Thu 09:00", dot:AMBER}
-      ],
+      miniKpis: (() => {
+        const m = demoMetrics(demoS);
+        return [
+          {label:"Due today", value:String(m.dueToday), delta:"J-10479 at 16:00 is tightest", deltaColor:AMBER},
+          {label:"Live work", value:fmtEUR(m.liveValue), delta:m.liveCount + " jobs in the building", deltaColor:GREEN},
+          {label:"Ready to invoice", value:fmtEUR(m.rtiValue), delta:m.rti.length + " jobs for Big Red Cloud", deltaColor:GREEN},
+          {label:"Online this week", value:fmtEUR(m.onlineRevenue), delta:m.onlineCount + " orders, all prepaid", deltaColor:GREEN}
+        ];
+      })(),
+      visitWidget: demoS.jobs.filter(j => j.dueDay === "Today" && j.stage !== "Ready to Invoice" && j.stage !== "Invoiced")
+        .map(j => ({title:j.id + " · " + j.customer, when:j.due.replace("Today ", ""), dot: j.risk === "risk" ? RED : j.risk === "watch" ? AMBER : LIME,
+          open: () => demoStore.openJob(j.id)})),
 
       /* dashboard */
       isDashboard: page === "Dashboard",
-      dashTitle: "Kilbride Group · " + areaLabel,
+      dashTitle: COMPANY.name + " · " + areaLabel,
       kpiEdit: st.kpiEdit,
       toggleKpiEdit: () => this.setState(prev => ({kpiEdit: !prev.kpiEdit})),
       kpiEditLabel: st.kpiEdit ? "Done" : "Edit KPIs",
@@ -3231,7 +3370,7 @@ export default class PulseLogic extends DCLogic {
       kpiEditColor: st.kpiEdit ? "var(--accent)" : "var(--on-accent)",
       kpiColumns: String(Math.max(1, st.kpiKeys.length)),
       kpis: st.kpiKeys.map((k, ki) => {
-        const d = KPI_DEFS[k];
+        const d = liveKpi(k);
         const up = d.dir === "up";
         return {label:d.label, value:this.countValue(d.value, ki), delta:d.delta, hint:d.hint,
           bg: "var(--kpi-card)",
@@ -3272,8 +3411,9 @@ export default class PulseLogic extends DCLogic {
         const peak = Math.max.apply(null, a.chart.map(c => c[1]));
         return {
           title:a.label, description:a.description, owner:a.owner, color:a.color,
+          isExec: a.id === "executive", exec: a.id === "executive" ? execModel : null,
           isCustom, customBadge: isCustom ? "GENERATED FROM PLAIN ENGLISH" : "",
-          metrics: a.metrics.map((m, mi) => ({
+          metrics: patchMetrics(a).map((m, mi) => ({
             delay: (mi * 70) + "ms",
             label:m[0], value:m[1], delta:m[2], hint:m[4],
             deltaColor: m[3] === "up" ? GREEN : RED,
@@ -3430,9 +3570,9 @@ export default class PulseLogic extends DCLogic {
                   ["OVERDUE", String(WORK_TASKS.filter(t => t.late && !st.done[t.id]).length), RED, ico.overdue],
                   ["DONE BY ME", String(WORK_TASKS.filter(t => st.done[t.id] || t.done).length), INK, ico.done]],
           approvals: [["AWAITING YOU", String(pendingApprovals), AMBER, ico.open],
-                  ["AWAITING OTHERS", "1", INK, ico.today],
-                  ["OVER THRESHOLD", "2", INK, ico.overdue],
-                  ["DECIDED THIS MONTH", "9", INK, ico.done]],
+                  ["WORK PAUSED", demoStore.get().changeState === "pending" ? "1 job" : "0 jobs", INK, ico.today],
+                  ["VALUE WAITING", fmtEUR((demoStore.get().changeState === "pending" ? 475 : 0) + (APPROVALS[1].status === "awaiting you" ? 1640 : 0) + (APPROVALS[2].status === "awaiting you" ? 610 : 0)), INK, ico.overdue],
+                  ["DECIDED TODAY", String(APPROVAL_COUNTS["Decided"]), INK, ico.done]],
           workflows: [["LIVE", "3", INK, ico.open],
                   ["RUNS TODAY", "42", INK, ico.today],
                   ["FAILING", "1", RED, ico.overdue],
@@ -3480,7 +3620,7 @@ export default class PulseLogic extends DCLogic {
           buttonLabel: running ? "Pause" : "Start",
           buttonIcon: running ? "M9 5.5v13 M15 5.5v13" : "M7 4.5v15l13-7.5-13-7.5Z",
           toggle: () => this.setState(prev => ({timerRunning: !prev.timerRunning,
-            timerTask: prev.timerTask || "Chase INV-10428 — Dunne & Sons",
+            timerTask: prev.timerTask || "Chase Dublin Dental for J-10470 artwork",
             timerPreset: prev.timerPreset || 25})),
           reset: () => this.setState({timerRunning:false, timerTask:null, timerPreset:null}),
           complete: () => this.setState({timerRunning:false, timerTask:null})
@@ -3627,6 +3767,10 @@ export default class PulseLogic extends DCLogic {
                 ? activeAgent.members.length + " agents · " + STATE_LABELS[activeAgent.state]
                 : STATE_LABELS[activeAgent.state] || "idle"},
       agentPlaceholder: "Message " + activeAgent.name,
+      agentInfo: {has: !!activeAgent.stats,
+        stats: (activeAgent.stats || []).map(x => ({k:x[0], v:x[1]})),
+        sources: activeAgent.sources || [], skills: activeAgent.skills || [],
+        runs: (activeAgent.runs || []).map(r => ({when:r[0], text:r[1]}))},
       agentHasDraft: (st.agentDraft || "").trim().length > 0,
       agentPrimaryTitle: (st.agentDraft || "").trim() ? "Send" : "Dictate",
       agentPrimary: () => { if ((st.agentDraft || "").trim()) this.sendToAgent(st.agentDraft.trim()); else this.setState(prev => ({agentMic: !prev.agentMic})); },
@@ -3666,7 +3810,7 @@ export default class PulseLogic extends DCLogic {
 
       /* mini chat */
       showFab: page !== "Home" && page !== "Agents",
-      fabTitle: st.miniOpen ? "Close Helios" : "Ask Helios",
+      fabTitle: st.miniOpen ? "Close Pulse" : "Ask Pulse",
       fabChatStyle: "position:absolute;inset:0;transition:transform .34s var(--ease),opacity .24s var(--ease);"
         + (st.miniOpen ? "transform:rotate(-90deg) scale(.7);opacity:0" : "transform:none;opacity:1"),
       fabCloseStyle: "position:absolute;inset:0;transition:transform .34s var(--ease),opacity .24s var(--ease);"
@@ -3699,12 +3843,12 @@ export default class PulseLogic extends DCLogic {
         date: new Date().toLocaleDateString("en-GB"), open: () => this.setState({page:"Home", miniOpen:false})}] : [],
       miniEmpty: st.miniThread.length === 0,
       miniGreeting: (() => { const h = new Date().getHours();
-        const g = h < 5 ? "Still up" : h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : h < 22 ? "Good evening" : "Still going";
-        return g + ", Mac"; })(),
+        const g = "Good morning"; // demo is set on a working morning
+        return g + ", " + COMPANY.owner.first; })(),
       miniSuggestions: [
         {label:"What changed today?", run:() => this.askMini("What changed today?")},
-        {label:"What needs my decision?", run:() => this.askMini("What needs my decision?")},
-        {label:"Draft a chase for the worst account", run:() => this.askMini("Draft chase emails")}
+        {label:"What needs my approval?", run:() => this.askMini("What needs my approval?")},
+        {label:"Which jobs might miss their deadline?", run:() => this.askMini("Which jobs might miss their deadline?")}
       ],
       miniWorkSections: (() => {
         const openTasks = WORK_TASKS.filter(t => t.status !== "Done").slice(0, 4);
@@ -3728,9 +3872,9 @@ export default class PulseLogic extends DCLogic {
           {num:"03", title:"Notifications", icon:"M12 4a5.5 5.5 0 0 0-5.5 5.5v3.2L5 16h14l-1.5-3.3V9.5A5.5 5.5 0 0 0 12 4Z M9.8 19a2.2 2.2 0 0 0 4.4 0",
             statusText:"12 unread", statusColor:"#6ad0f0", open:notifsOpen, toggle:toggle("notifications"),
             isEmpty:false, emptyText:"",
-            rows:[{isCheck:false, title:"Xero token expired — reconnect", hasTag:false},
-              {isCheck:false, title:"Aoife raised a €14,280 approval", hasTag:false},
-              {isCheck:false, title:"3 accounts moved off Standard rate", hasTag:false}],
+            rows:[{isCheck:false, title:"CR-118: Byrne & Co change needs approval", hasTag:false},
+              {isCheck:false, title:"J-10470 still waiting on artwork", hasTag:false},
+              {isCheck:false, title:"J-10473 €1,640 ready to invoice", hasTag:false}],
             hasLink:true, linkLabel:"All notifications", linkGo: () => this.setState({showNotifs:true, miniOpen:false}),
             wrapStyle: "background:var(--surface);border:1px solid var(--border);border-radius:var(--card-r,18px);overflow:hidden"}
         ];
@@ -3753,11 +3897,11 @@ export default class PulseLogic extends DCLogic {
       closeBuilder: () => { clearInterval(this._trainTimer); this.setState({builderOpen:false, training:false}); },
       openBuilder: () => this.setState({page:"Agents", builderOpen:true, builderMode:"new", trained:false, training:false, trainPhase:0, briefThread:[], briefDraft:"", briefPicks:{}, tuneThread:[], tuneDraft:"", sysPrompt:undefined,
         agentSpec:{name:"", shape:"crown-pebble", tint:"#191c1f", persona:"", personality:"Straight-talking",
-               answer:"Short answers", context:["Organisations","Tasks"], skills:["Search records","Summarise activity"], tasks:[]}}),
+               answer:"Short answers", context:["Jobs","Dockets"], skills:["Search jobs","Summarise activity"], tasks:[]}}),
       openBuilderForAgent: () => this.setState({builderOpen:true, builderMode:"tune", trained:true, training:false, trainPhase:0, briefThread:[], briefDraft:"", briefPicks:{}, tuneThread:[], tuneDraft:"", sysPrompt:undefined,
         agentSpec:{name:activeAgent.name, shape:activeAgent.shape || "crown-pebble", tint:activeAgent.tint || "#191c1f",
                persona:activeAgent.role, personality:"Straight-talking", answer:"Short answers",
-               context:["Organisations","Tasks","Invoices"], skills:["Search records","Summarise activity","Draft email"], tasks:[]}}),
+               context:["Jobs","Dockets","Invoices (Big Red Cloud)"], skills:["Search jobs","Summarise activity","Draft email"], tasks:[]}}),
       draftAgent: {name:st.agentSpec.name, persona:st.agentSpec.persona,
         shape:st.agentSpec.shape, tint:st.agentSpec.tint, state:"working",
         shapeLabel: (FACE_SHAPES.find(s => s[0] === st.agentSpec.shape) || FACE_SHAPES[0])[1]},
@@ -4047,9 +4191,12 @@ export default class PulseLogic extends DCLogic {
       })(),
       notificationFeed, features, results,
       inbox: inboxKeys.map(rowFor),
-      inboxTop: openKeys.slice(0,3).map(rowFor),
+      inboxTop: openKeys.slice(0,3).map(k => Object.assign(rowFor(k), {open: () => goItem(k)})),
       inboxFilters: ["All","Approvals","Alerts","Work","Automations"].map(f => ({label:f, style:pillStyle(st.inboxFilter === f), pick:() => this.setState({inboxFilter:f, open:null})})),
-      tasks: TASKS.filter(t => t.queue.includes("mine")).map(decorateTask),
+      tasks: HOME_TASKS.map(t => {
+        const auto = (t.id === "h1" && demoS.changeState !== "pending") || (t.id === "h2" && demoS.synced.includes("J-10473"));
+        return Object.assign(decorateTask(t), auto ? {checkOpacity:"1", fill:LIME, ring:LIME, color:FAINT, strike:"line-through", dueColor:FAINT} : {});
+      }),
       settingsStyle: railStyle(page === "Settings") + ";animation:railIn .42s var(--ease) 300ms both",
       settingsGlyphStyle: glyphStyle(page === "Settings", st.hovered === "__settings"),
       settingsHovered: st.hovered === "__settings",
@@ -4068,8 +4215,8 @@ export default class PulseLogic extends DCLogic {
         const live = st.agents.filter(a => a.state === "working" || a.state === "thinking").length;
         return (live ? live + " AGENTS RUNNING" : "NO AGENTS RUNNING") + " · SYNCED 2 MIN AGO";
       })(),
-      homeSubline: "Ask about any record, job or number you can see.",
-      approvalsPill: openKeys.length + " APPROVALS · €48,120 HELD",
+      homeSubline: "Here's what's happening across " + COMPANY.name + ".",
+      approvalsPill: openKeys.length + " NEED YOU · " + fmtEUR(demoMetrics(demoS).rtiValue) + " READY TO INVOICE",
       showApprovalNote: openKeys.length > 0 && !st.approvalNoteHidden,
       dismissApprovalNote: () => this.setState({approvalNoteHidden:true}),
       /* Home canvas: a decorative layer the user can switch, scoped to the
@@ -4162,24 +4309,40 @@ export default class PulseLogic extends DCLogic {
       }),
       greetingPrefix: (() => {
         const h = new Date().getHours();
-        const pool = h < 5 ? ["Still up","Burning the midnight oil"]
-          : h < 12 ? ["Good morning","Rise and grind","Morning"]
-          : h < 17 ? ["Good afternoon","Afternoon"]
-          : h < 22 ? ["Good evening","Evening"]
-          : ["Still going","Night owl mode"];
-        // A goofy one about 1 in 5 times, otherwise the plain greeting — picked
-        // once per hour and cached, so it doesn't flip on every re-render.
-        const goofy = ["Top of the morning","Look who it is","Well if it isn't"];
-        const bucket = Math.floor(Date.now() / 3600000);
-        if (this._greetBucket !== bucket) {
-          this._greetBucket = bucket;
-          const useGoofy = bucket % 5 === 0;
-          const list = useGoofy ? pool.concat(goofy) : pool;
-          this._greetPick = list[Math.floor(Math.random() * list.length)];
-        }
-        return this._greetPick;
+        return "Good morning,";
       })(),
-      greetingName: "Mac",
+      greetingName: COMPANY.owner.first + ".",
+      homeSnapshot: (() => {
+        const m = demoMetrics(demoS);
+        const tile = (label, value, go, tone) => ({label, value, go, tone: tone || "var(--ink)"});
+        return [
+          tile("Live Jobs", String(m.liveCount), () => demoStore.go("Jobs", "live")),
+          tile("In Artwork", String(m.artwork.length), () => demoStore.go("Production", "artwork")),
+          tile("In Production", String(m.production.length), () => demoStore.go("Production", "queue"), "#6fcfe4"),
+          tile("Ready to Invoice", String(m.rti.length), () => demoStore.go("Finance", "ready"), "#e7c35a"),
+          tile("Need Attention", String(m.attention.length), () => demoStore.go("Jobs", "live"), m.attention.length ? "#e07aa8" : "var(--ink)"),
+          tile("Online Orders This Week", String(m.onlineCount), () => demoStore.go("Online Orders", "orders")),
+          tile("Prepaid Online Revenue", fmtEUR(m.onlineRevenue), () => demoStore.go("Online Orders", "payments")),
+          tile("Value of Live Work", fmtEUR(m.liveValue), () => demoStore.go("Jobs", "overview"))
+        ].map((t, i) => Object.assign(t, {delay: (i * 40) + "ms"}));
+      })(),
+      homeBrief: (() => {
+        const m = demoMetrics(demoS);
+        const words = ["Zero","One","Two","Three","Four","Five","Six","Seven","Eight","Nine","Ten","Eleven","Twelve"];
+        const n = m.attention.length;
+        const parts = ["Morning " + COMPANY.owner.first + ". There are " + m.liveCount + " live jobs today. " + (words[n] || n) + (n === 1 ? " needs" : " need") + " attention."];
+        if (demoS.changeState === "pending") parts.push("Byrne & Co changed J-10482 from 1,000 cards / 2 names to 2,000 / 5 names. I have paused artwork and prepared the change for your approval.");
+        else if (demoS.changeState === "approved") parts.push("You approved the Byrne & Co change on J-10482. Docket V3 is current and Sarah has the artwork revision.");
+        else parts.push("You rejected the Byrne & Co change. J-10482 continues at 1,000 cards, 2 names.");
+        if (!demoS.synced.includes("J-10473")) parts.push("€1,640 from Summit Property Partners is ready to send to Big Red Cloud.");
+        else parts.push("Summit Property Partners' €1,640 invoice is in Big Red Cloud.");
+        parts.push((words[m.onlineCount] || m.onlineCount) + " online orders worth " + fmtEUR(m.onlineRevenue) + " have arrived this week and all are paid.");
+        return parts.join(" ");
+      })(),
+      openBrief: () => this.setState({page:"Agents", agentId:"briefing"}),
+      homePrompts: ["Which jobs might miss their deadline?","What needs my approval?","What can be invoiced today?",
+        "Show everything currently in artwork.","How much prepaid work came from the website this month?"]
+        .map(q => ({label:q, run: () => this.ask(q)})),
       flipUnits: this.buildFlipUnits(BODY, INK, LIME),
       enterSettings: (e) => this.hover("__settings", "Settings", "", e),
       leaveSettings: () => this.unhover("__settings"),
@@ -4197,7 +4360,7 @@ export default class PulseLogic extends DCLogic {
       inboxEmpty: openKeys.length === 0,
       filteredEmpty: inboxKeys.length === 0,
       queueEmpty: queueTasks.length === 0,
-      taskSummary: TASKS.filter(t => t.queue.includes("mine") && st.done[t.id]).length + " of " + queueCounts.mine + " done",
+      taskSummary: HOME_TASKS.filter(t => st.done[t.id]).length + " of " + HOME_TASKS.length + " done",
       heliosEmpty: st.thread.length === 0,
       threadOpen: st.thread.length > 0,
       threadTitle: st.thread.length ? st.thread[0].text : "",
@@ -4219,21 +4382,16 @@ export default class PulseLogic extends DCLogic {
           confirmSummary: m.confirmSummary || "",
           confirmHash: "sha256 a4f19c…",
           hasActions: done && m.confirm !== true && !!m.actions,
-          actions:(m.actions || []).map(a => ({label:a[0], bg:a[1] ? LIME : "none", color:a[1] ? "var(--on-accent)" : "var(--ink)", border:a[1] ? LIME : "var(--border)", run:() => this.ask(a[0])}))
+          actions:(m.actions || []).map(a => ({label:a[0], bg:a[1] ? LIME : "none", color:a[1] ? "var(--on-accent)" : "var(--ink)", border:a[1] ? LIME : "var(--border)", run:() => a[2] ? a[2]() : this.ask(a[0])}))
         };
       }),
       suggestions: [
-        {label:"Which organisations are over their limit?", run:() => this.ask("Which organisations are over their credit limit?")},
-        {label:"What is overdue in my work?", run:() => this.ask("Summarise the tasks running late")},
-        {label:"What visits are booked this week?", run:() => this.ask("What site visits are booked this week?")}
+        {label:"Which jobs might miss their deadline?", run:() => this.ask("Which jobs might miss their deadline?")},
+        {label:"What needs my approval?", run:() => this.ask("What needs my approval?")},
+        {label:"What can be invoiced today?", run:() => this.ask("What can be invoiced today?")}
       ],
-      activity: [
-        {who:"Aoife Nolan", what:"raised purchase order PO-4471", event:"core.approval.created", when:"18m", dot:LIME},
-        {who:"Helios", what:"flagged Dunne & Sons payment behaviour", event:"core.notification.created", when:"2h", dot:AMBER},
-        {who:"Tom Walsh", what:"created a depot stock check visit", event:"site-visits.visit.created", when:"Yesterday", dot:NEUTRAL},
-        {who:"Overdue reminder", what:"sent 6 of 10 emails", event:"core.automation.failed", when:"08:00", dot:AMBER},
-        {who:"Dispatcher", what:"dead-lettered 2 Xero deliveries", event:"core.event.dead", when:"02:16", dot:RED}
-      ],
+      activity: demoS.events.slice(-5).reverse().map(e => ({who: e.jobId || "", what: e.text, event: e.who + (e.src ? " · " + e.src : ""), when: e.t,
+        dot: e.kind === "attention" ? "#e07aa8" : e.kind === "system" ? "#6fcfe4" : e.kind === "person" ? "#e7c35a" : LIME})),
       /* Cards, not rows: each one lands on its own spring, newest first, with
          the status colour carried into a soft glow behind its marker. */
       notifications: notificationFeed.slice(0,5).map((n, i) => ({
@@ -4249,20 +4407,20 @@ export default class PulseLogic extends DCLogic {
       })),
       notifGroups: [["EARLIER TODAY", 0]],
       deployment: [
-        {k:"Client", v:"kilbride", font:MONO},
-        {k:"App name", v:"Kilbride Group Operations", font:"inherit"},
+        {k:"Client", v:"murphy-print", font:MONO},
+        {k:"App name", v:COMPANY.name + " Operations", font:"inherit"},
         {k:"Accent", v:"oklch(0.86 0.19 118)", font:MONO},
         {k:"Terminology", v:"organisation → Merchant", font:"inherit"},
         {k:"Locale", v:"EUR · Europe/Dublin", font:"inherit"},
-        {k:"Helios channels", v:"home, whatsapp", font:MONO}
+        {k:"Pulse channels", v:"home, email", font:MONO}
       ],
       roles: [
-        {name:"Owner", grants:"all core permissions + site-visits:*", scope:"all", users:"1"},
+        {name:"Owner", grants:"all core permissions + print-jobs:*", scope:"all", users:"1"},
         {name:"Accounts", grants:"core:organisation:*, core:approval:decide, core:task:*", scope:"all", users:"3"},
-        {name:"Installer", grants:"core:task:view, core:task:update, site-visits:visit:*", scope:"own", users:"9"},
+        {name:"Production", grants:"core:task:view, core:task:update, print-jobs:docket:*", scope:"own", users:"4"},
         {name:"Counter staff", grants:"core:person:view, core:organisation:view", scope:"location", users:"6"}
       ],
-      team: [{i:"AN",bg:"var(--accent)"},{i:"SB",bg:"#9fd6f0"},{i:"TW",bg:"#e6c78a"}],
+      team: DEMO_STAFF.slice(0, 4).map(p => ({i:p.initials, bg:p.tint})),
       paletteOpen: st.paletteOpen, showNotifs: st.showNotifs, query: st.query, draft: st.draft,
       noResults: results.length === 0,
       palScopes, hasQuery: q.length > 0, askPreview: q ? '"' + q + '"' : "",
@@ -4319,7 +4477,7 @@ export default class PulseLogic extends DCLogic {
       chatRailLabel: st.chatRailPinned ? "Hide widgets" : "Widgets",
       chatScrollStyle: st.thread.length
         ? "flex:1 1 0;min-height:0;overflow-y:auto;display:flex;flex-direction:column"
-        : "flex:0 0 auto;display:flex;flex-direction:column",
+        : "flex:0 1 auto;min-height:0;overflow-y:auto;scrollbar-width:none;display:flex;flex-direction:column",
       chatColumnStyle: "position:relative;z-index:1;flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;"
         + "transition:max-width .38s var(--ease)",
       threadWidthStyle: "flex:0 0 auto;width:100%;margin:0 auto;padding:14px 4px 8px;"
@@ -4331,12 +4489,12 @@ export default class PulseLogic extends DCLogic {
         {label:"Agents", icon:ICONS.navAgents, go: () => this.setState({page:"Agents"})}
       ],
       composerPrompts: [
-        {label:"Chase the three invoices past 60 days", tag:"CASH", icon:ICONS.insights,
-          run: () => this.ask("Chase the three invoices past 60 days")},
-        {label:"Why did the Xero sync fail this morning?", tag:"HEALTH", icon:ICONS.health,
-          run: () => this.ask("Why did the Xero sync fail this morning?")},
-        {label:"Who should cover tomorrow's Ballincollig visit?", tag:"WORK", icon:ICONS.visits,
-          run: () => this.ask("Who should cover tomorrow's Ballincollig visit?")}
+        {label:"Which jobs might miss their deadline?", tag:"JOBS", icon:ICONS.navJobs,
+          run: () => this.ask("Which jobs might miss their deadline?")},
+        {label:"What can be invoiced today?", tag:"FINANCE", icon:ICONS.navFinance,
+          run: () => this.ask("What can be invoiced today?")},
+        {label:"How much prepaid work came from the website this month?", tag:"ONLINE", icon:ICONS.navOnline,
+          run: () => this.ask("How much prepaid work came from the website this month?")}
       ].map((p, i) => Object.assign(p, {
         rowStyle: "display:flex;align-items:center;gap:13px;width:100%;padding:10px 14px;background:none;border:0;"
           + (i ? "border-top:1px solid var(--border);" : "")

@@ -131,6 +131,38 @@ export default function Agents({ v }: Props) {
               </svg>
             </button>
           </div>
+          {v.agentInfo?.has && (
+            <div style={{"flex":"none","display":"grid","gridTemplateColumns":"repeat(auto-fit,minmax(240px,1fr))","gap":"12px 18px","alignItems":"start","margin":"0 24px 6px","padding":"12px 16px","background":"var(--surface)","border":"1px solid var(--border)","borderRadius":"var(--card-r,18px)","backdropFilter":"blur(18px)"}}>
+              <div style={{"display":"flex","gap":"16px"}}>
+                {arr(v.agentInfo?.stats).map((x: any, i: number) => (
+                  <div key={i} style={{"minWidth":"0"}}>
+                    <div style={{"fontFamily":"var(--mono)","fontSize":"9px","letterSpacing":"0.12em","color":"var(--faint)","textTransform":"uppercase","whiteSpace":"nowrap"}}>{txt(x?.k)}</div>
+                    <div style={{"fontSize":"16px","fontWeight":"500","letterSpacing":"-0.4px","marginTop":"3px","whiteSpace":"nowrap"}}>{txt(x?.v)}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{"minWidth":"0"}}>
+                <div style={{"fontFamily":"var(--mono)","fontSize":"9px","letterSpacing":"0.12em","color":"var(--faint)"}}>{"READS FROM · SKILLS"}</div>
+                <div style={{"display":"flex","flexWrap":"wrap","gap":"5px","marginTop":"6px"}}>
+                  {arr(v.agentInfo?.sources).map((x: any, i: number) => (
+                    <span key={"s" + i} style={{"height":"20px","display":"inline-flex","alignItems":"center","padding":"0 8px","borderRadius":"6px","background":"var(--accent-faint)","border":"1px solid var(--accent-line)","fontSize":"11px","color":"var(--accent)","whiteSpace":"nowrap"}}>{txt(x)}</span>
+                  ))}
+                  {arr(v.agentInfo?.skills).map((x: any, i: number) => (
+                    <span key={"k" + i} style={{"height":"20px","display":"inline-flex","alignItems":"center","padding":"0 8px","borderRadius":"6px","background":"var(--surface-2)","border":"1px solid var(--border)","fontSize":"11px","color":"var(--dim)","whiteSpace":"nowrap"}}>{txt(x)}</span>
+                  ))}
+                </div>
+              </div>
+              <div style={{"minWidth":"0"}}>
+                <div style={{"fontFamily":"var(--mono)","fontSize":"9px","letterSpacing":"0.12em","color":"var(--faint)"}}>{"RECENT RUNS"}</div>
+                {arr(v.agentInfo?.runs).map((r: any, i: number) => (
+                  <div key={i} style={{"display":"flex","gap":"9px","marginTop":"5px","fontSize":"11.5px","lineHeight":"1.35"}}>
+                    <span style={{"flex":"none","width":"86px","fontFamily":"var(--mono)","fontSize":"10px","color":"var(--faint)","whiteSpace":"nowrap","overflow":"hidden","textOverflow":"ellipsis"}}>{txt(r?.when)}</span>
+                    <span style={{"minWidth":"0","color":"var(--body)","overflow":"hidden","textOverflow":"ellipsis","whiteSpace":"nowrap"}}>{txt(r?.text)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           <div style={{"flex":"1","minHeight":"0","overflowY":"auto","padding":"8px 24px 16px"}}>
             {arr(v.agentThread).map((m: any, i113: number) => (
               <Fragment key={i113}>

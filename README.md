@@ -1,6 +1,6 @@
 # Pulse — Harbour
 
-React build of the **Pulse v5 Harbour** design from Claude Design, the operations dashboard mocked up for Kilbride Group.
+React build of the **Pulse v5 Harbour** design from Claude Design, adapted as the Murphy Print (working name) commercial printing demo for Sean Murphy.
 
 Every page, theme and interaction from the design is here. Screens were checked against the original mockup and match pixel for pixel at 1440×900 and 1024×720.
 
@@ -20,7 +20,9 @@ npm run build      # type-check + production build into dist/
 | Overlays: ⌘K palette, agent studio, Helios mini chat, work viewer, new record, background gallery | `src/views/overlays/` |
 | App frame: sidebar, top bar, notifications | `src/views/AppShell.tsx` |
 | State and behaviour | `src/logic/PulseLogic.js` |
-| Demo data (Kilbride Group) | `src/logic/data.js` |
+| Core demo data | `src/logic/data.js` |
+| Print demo: identity, data, store, UI kit | `src/demo/` (change company identity in `config.ts`) |
+| Print modules: Jobs, Production, Online Orders, Customers, Finance | `src/views/print/` |
 | Agent avatar | `src/components/AgentFace.tsx` |
 | Theme tokens (Harbour, light and 11 more), animations | `src/styles/pulse.css` |
 

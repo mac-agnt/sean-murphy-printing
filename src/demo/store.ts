@@ -139,7 +139,7 @@ export const store = {
   /** CR-118: approve the Byrne & Co change. Docket V2 → superseded, V3 current. */
   approveChange() {
     if (state.changeState !== "pending") return;
-    const t = clock();
+    const t = "11:27";
     set((s) => {
       const versions: DocketVersion[] = (s.dockets[CHANGE.jobId] || []).map((d) => ({ ...d, status: "Superseded" as const }));
       versions.push({ v: 3, created: "Today " + t, by: "Docket Agent", reason: "CR-118 approved: 2,000 cards, 5 names", qty: CHANGE.newQty, names: CHANGE.newNames, status: "Current" });
@@ -190,7 +190,7 @@ export const store = {
     if (!j || state.synced.includes(jobId) || state.syncing) return;
     set({ syncing: jobId });
     setTimeout(() => {
-      const t = clock();
+      const t = "13:18";
       set((s) => ({
         syncing: null,
         synced: s.synced.concat([jobId]),

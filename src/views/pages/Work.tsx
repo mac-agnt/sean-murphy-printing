@@ -1,6 +1,7 @@
 import { Fragment } from "react";
 import { arr, cat, css, cx, txt } from "../../runtime/template";
 import WorkSchedules from "./WorkSchedules";
+import WorkFlows from "./WorkFlows";
 
 type Props = { v: any };
 
@@ -353,9 +354,9 @@ export default function Work({ v }: Props) {
                       {a?.pending && (
                         <>
                           <button className="ixp" onClick={a?.approve} style={{"height":"30px","padding":"0 14px","border":"0","borderRadius":"var(--cta-r,9px)","background":"var(--accent-fill,var(--accent))","color":"var(--on-accent)","boxShadow":"var(--accent-glow,none)","fontSize":"12.5px","fontWeight":"500","cursor":"pointer","transition":"background .2s var(--ease),transform .18s var(--ease)"}}>
-                            {"Approve"}
+                            {txt(a?.approveLabel || "Approve")}
                           </button>
-                          <button className="ixz" onClick={a?.approve} style={{"height":"30px","padding":"0 13px","border":"1px solid var(--border)","background":"none","borderRadius":"var(--r-ctl,9px)","fontSize":"12.5px","color":"var(--ink)","cursor":"pointer","transition":"border-color .2s var(--ease)"}}>
+                          <button className="ixz" onClick={a?.decline} style={{"height":"30px","padding":"0 13px","border":"1px solid var(--border)","background":"none","borderRadius":"var(--r-ctl,9px)","fontSize":"12.5px","color":"var(--ink)","cursor":"pointer","transition":"border-color .2s var(--ease)"}}>
                             {"Decline"}
                           </button>
                         </>
@@ -407,6 +408,7 @@ export default function Work({ v }: Props) {
                 </Fragment>
               ))}
             </div>
+            <WorkFlows ops={v.ops} />
             <div style={{"background":"var(--surface)","border":"1px solid var(--border)","borderRadius":"var(--card-r,18px)","backdropFilter":"blur(20px) saturate(1.3)","boxShadow":"var(--card-shadow)","padding":"6px 0 10px","overflow":"hidden"}}>
               <div style={{"display":"grid","gridTemplateColumns":"1.5fr 1fr .9fr .8fr .7fr 52px","padding":"12px 20px 10px"}}>
                 {arr(v.ops?.columns).map((c: any, i33: number) => (

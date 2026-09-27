@@ -225,7 +225,7 @@ export default function HomeWidgetRail({ v }: Props) {
             <div style={{"background":"var(--surface)","border":"1px solid var(--border)","borderRadius":"var(--card-r,18px)","backdropFilter":"blur(20px) saturate(1.3)","boxShadow":"var(--card-shadow)","transition":"transform .28s var(--ease),border-color .24s var(--ease),box-shadow .28s var(--ease)","padding":"20px 22px 10px"}}>
               <div style={{"display":"flex","alignItems":"center","gap":"10px"}}>
                 <div style={{"flex":"1","fontSize":"13.5px","fontWeight":"500"}}>
-                  {"Site visits this week"}
+                  {"Due today"}
                 </div>
                 {v.widgetEdit && (
                   <>
@@ -240,7 +240,7 @@ export default function HomeWidgetRail({ v }: Props) {
               <div style={{"marginTop":"6px"}}>
                 {arr(v.visitWidget).map((v: any, i21: number) => (
                   <Fragment key={i21}>
-                    <div style={{"display":"flex","alignItems":"center","gap":"11px","padding":"11px 0","borderTop":"1px solid var(--border)"}}>
+                    <div onClick={v?.open} style={{"display":"flex","alignItems":"center","gap":"11px","padding":"11px 0","borderTop":"1px solid var(--border)","cursor":"pointer"}}>
                       <span style={css(cat("width:7px;height:7px;border-radius:2px;flex:none;background:", v?.dot))} />
                       <span style={{"flex":"1","minWidth":"0","fontSize":"12.5px","overflow":"hidden","textOverflow":"ellipsis","whiteSpace":"nowrap"}}>
                         {txt(v?.title)}

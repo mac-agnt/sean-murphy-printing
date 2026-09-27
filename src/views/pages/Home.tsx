@@ -42,6 +42,23 @@ export default function Home({ v }: Props) {
                   <div style={{"marginTop":"10px","fontSize":"13px","color":"var(--dim)","textWrap":"pretty"}}>
                     {txt(v.homeSubline)}
                   </div>
+                  <div style={{"width":"100%","maxWidth":"720px","display":"grid","gridTemplateColumns":"repeat(4,minmax(0,1fr))","gap":"8px","marginTop":"22px","textAlign":"left"}}>
+                    {arr(v.homeSnapshot).map((t: any, i: number) => (
+                      <button key={i} className="ixe" onClick={t?.go} style={{"display":"flex","flexDirection":"column","gap":"4px","padding":"11px 13px","background":"var(--surface)","border":"1px solid var(--border)","borderRadius":"var(--r-md,14px)","backdropFilter":"blur(18px)","cursor":"pointer","textAlign":"left","transition":"border-color .2s var(--ease),transform .18s var(--ease)","animation":"riseIn .4s var(--ease) " + (t?.delay || "0ms") + " both"}}>
+                        <span style={{"fontSize":"20px","fontWeight":"500","letterSpacing":"-0.6px","lineHeight":"1.1","color":t?.tone}}>{txt(t?.value)}</span>
+                        <span style={{"fontSize":"11px","color":"var(--dim)","whiteSpace":"nowrap","overflow":"hidden","textOverflow":"ellipsis"}}>{txt(t?.label)}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <div onClick={v.openBrief} style={{"width":"100%","maxWidth":"720px","display":"flex","gap":"12px","marginTop":"10px","padding":"13px 16px","textAlign":"left","background":"var(--accent-faint)","border":"1px solid var(--accent-line)","borderRadius":"var(--r-md,14px)","cursor":"pointer"}}>
+                    <span style={{"width":"24px","height":"24px","flex":"none","borderRadius":"8px","background":"var(--accent-soft)","display":"flex","alignItems":"center","justifyContent":"center"}}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12h4l2.5-6 3.5 12 3-8 2 2h5" /></svg>
+                    </span>
+                    <div style={{"minWidth":"0"}}>
+                      <div style={{"fontFamily":"var(--mono)","fontSize":"9px","letterSpacing":"0.14em","color":"var(--accent)"}}>{"PULSE BRIEFING · 07:30"}</div>
+                      <div style={{"fontSize":"13px","lineHeight":"1.55","color":"var(--body)","marginTop":"4px","textWrap":"pretty"}}>{txt(v.homeBrief)}</div>
+                    </div>
+                  </div>
                 </div>
               </>
             )}
@@ -88,6 +105,15 @@ export default function Home({ v }: Props) {
               </div>
             </div>
           </div>
+          {v.heliosEmpty && (
+            <div style={{"flex":"none","display":"flex","flexWrap":"wrap","justifyContent":"center","gap":"6px","maxWidth":"720px","margin":"12px auto 0"}}>
+              {arr(v.homePrompts).map((p: any, i: number) => (
+                <button key={i} className="ixe" onClick={p?.run} style={{"height":"30px","padding":"0 12px","background":"var(--surface)","border":"1px solid var(--border)","borderRadius":"999px","fontSize":"12px","color":"var(--body)","cursor":"pointer","whiteSpace":"nowrap","transition":"border-color .2s var(--ease),color .2s var(--ease)"}}>
+                  {txt(p?.label)}
+                </button>
+              ))}
+            </div>
+          )}
           {v.heliosEmpty && (
             <>
               <div style={{"flex":"1 1 0","minHeight":"0"}} />

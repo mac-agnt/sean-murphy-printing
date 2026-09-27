@@ -404,7 +404,7 @@ export default function AppShell({ v }: Props) {
                   <div style={{"display":"flex","alignItems":"flex-start","gap":"14px","padding":"20px 24px 18px"}}>
                     <div style={{"flex":"1","minWidth":"0"}}>
                       <div style={{"fontSize":"15px","fontWeight":"600","letterSpacing":"-.2px"}}>
-                        {"Directory"}
+                        {txt(v.rec?.tableTitle)}
                       </div>
                       <div style={{"fontSize":"13px","color":"var(--dim)","marginTop":"5px"}}>
                         {txt(v.rec?.tableCaption)}
@@ -455,10 +455,10 @@ export default function AppShell({ v }: Props) {
                     <>
                       <div style={{"padding":"52px 24px","textAlign":"center","borderTop":"1px solid var(--border)"}}>
                         <div style={{"fontSize":"14px","fontWeight":"500"}}>
-                          {"No contacts match"}
+                          {txt(v.rec?.emptyTitle)}
                         </div>
                         <div style={{"fontSize":"13px","color":"var(--dim)","marginTop":"6px"}}>
-                          {"Try fewer words — it matches on name, role, organisation and tag."}
+                          {"Try fewer words, or clear the search to see everything."}
                         </div>
                       </div>
                     </>
@@ -468,7 +468,7 @@ export default function AppShell({ v }: Props) {
                       {txt(v.rec?.tableFooter)}
                     </span>
                     <span style={{"fontSize":"12px","color":"var(--faint)"}}>
-                      {"Sorted by name"}
+                      {"Live from the job record"}
                     </span>
                   </div>
                 </div>
